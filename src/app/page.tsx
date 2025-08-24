@@ -1,6 +1,8 @@
 'use client';
 
+import { useUser } from '@auth0/nextjs-auth0/client';
 import { useState } from 'react';
+import Image from 'next/image';
 
 interface Message {
   id: string;
@@ -9,27 +11,20 @@ interface Message {
 }
 
 export default function Chat() {
+  const { user, error, isLoading: userLoading } = useUser();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [userName, setUserName] = useState<string>('');
-  const [showNameInput, setShowNameInput] = useState(false);
-  const [isSignedIn, setIsSignedIn] = useState(false);
-
-  const handleSignIn = () => {
-    setShowNameInput(true);
-  };
-
-  const handleNameSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (userName.trim()) {
-      setShowNameInput(false);
-      setIsSignedIn(true);
-    }
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Prevent submission if user is not authenticated
+    if (!user) {
+      alert('Please sign in to use the chat.');
+      return;
+    }
+    
     if (!input.trim() || isLoading) return;
 
     const userMessage: Message = {
@@ -53,7 +48,12 @@ export default function Chat() {
         }),
       });
 
-      if (!response.ok) throw new Error('Failed to send message');
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication required. Please sign in to use the chat.');
+        }
+        throw new Error('Failed to send message');
+      }
 
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
@@ -106,7 +106,7 @@ export default function Chat() {
         prev.slice(0, -1).concat({
           id: (Date.now() + 1).toString(),
           role: 'assistant',
-          content: 'Sorry, there was an error processing your message.',
+          content: error instanceof Error ? error.message : 'Sorry, there was an error processing your message.',
         })
       );
     } finally {
@@ -116,86 +116,90 @@ export default function Chat() {
 
   return (
     <div className="max-w-2xl mx-auto p-4 min-h-screen">
-      {/* Name Input Modal Overlay */}
-      {showNameInput && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white p-8 rounded-lg shadow-lg border max-w-md w-full mx-4">
-            <h2 className="text-2xl font-bold text-center mb-4">Sign In to AI Chat</h2>
-            <p className="text-gray-600 text-center mb-6">Please enter your name to continue</p>
-            <form onSubmit={handleNameSubmit}>
-              <input
-                type="text"
-                value={userName}
-                onChange={(e) => setUserName(e.target.value)}
-                placeholder="Enter your name..."
-                className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
-                required
-                autoFocus
-              />
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowNameInput(false)}
-                  className="flex-1 bg-gray-500 text-white p-3 rounded-lg hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 bg-blue-500 text-white p-3 rounded-lg hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  Sign In
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Main Chat Interface */}
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-center mb-2">AI Chat</h1>
         <p className="text-gray-600 text-center">Chat with OpenAI GPT-4o Mini</p>
       </div>
 
       <div className="border rounded-lg overflow-hidden mb-4 bg-white shadow-sm">
-        {/* Chat Header */}
+        {/* Chat Header with Authentication */}
         <div className="bg-blue-500 text-white px-4 py-3 border-b">
           <div className="flex items-center justify-between">
-            {isSignedIn ? (
-              <div className="flex items-center">
-                <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center mr-3">
-                  <span className="text-sm font-semibold">{userName.charAt(0).toUpperCase()}</span>
-                </div>
-                <div>
-                  <h3 className="font-semibold">{userName}</h3>
-                  <p className="text-blue-100 text-sm">Online</p>
-                </div>
+            <div className="flex items-center">
+              <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center mr-3 overflow-hidden">
+                {user?.picture ? (
+                  <Image 
+                    src={user.picture} 
+                    alt={user.name || 'User'} 
+                    width={32}
+                    height={32}
+                    className="rounded-full"
+                  />
+                ) : (
+                  <span className="text-sm font-semibold">
+                    {user ? (user.name || user.email || 'U').charAt(0).toUpperCase() : '👤'}
+                  </span>
+                )}
               </div>
-            ) : (
-              <div className="flex items-center">
-                <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center mr-3">
-                  <span className="text-sm font-semibold">?</span>
-                </div>
-                <div>
-                  <h3 className="font-semibold">Guest User</h3>
-                  <p className="text-blue-100 text-sm">Not signed in</p>
-                </div>
+              <div>
+                <h3 className="font-semibold">
+                  {user ? (user.name || user.email) : 'Guest User'}
+                </h3>
+                <p className="text-blue-100 text-sm">
+                  {userLoading ? 'Loading...' : user ? 'Authenticated' : 'Not signed in'}
+                </p>
               </div>
-            )}
-            <button
-              onClick={handleSignIn}
-              className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-3 py-1 rounded transition-colors"
-            >
-              {isSignedIn ? 'Switch User' : 'Sign In'}
-            </button>
+            </div>
+            <div className="flex items-center gap-2">
+              {error && (
+                <span className="text-xs bg-red-500 px-2 py-1 rounded">
+                  Auth Error
+                </span>
+              )}
+              {user ? (
+                <button
+                  onClick={() => window.location.href = '/api/auth/logout'}
+                  className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-3 py-1 rounded transition-colors"
+                >
+                  Sign Out
+                </button>
+              ) : (
+                <button
+                  onClick={() => window.location.href = '/api/auth/login'}
+                  className="bg-green-600 hover:bg-green-700 text-white text-sm px-3 py-1 rounded transition-colors"
+                >
+                  Sign In
+                </button>
+              )}
+            </div>
           </div>
         </div>
-
         {/* Chat Messages */}
         <div className="h-96 overflow-y-auto p-4 bg-gray-50">
           {messages.length === 0 && (
-            <p className="text-gray-500 text-center">Start a conversation...</p>
+            <div className="text-center text-gray-500">
+              {user ? (
+                <>
+                  <p className="mb-2">
+                    Welcome to AI Chat, {user.name || user.email}! 👋
+                  </p>
+                  <p>Start a conversation with our AI assistant...</p>
+                </>
+              ) : (
+                <>
+                  <p className="mb-2">Welcome to AI Chat! 👋</p>
+                  <p className="text-orange-600 font-medium mb-2">
+                    🔒 Authentication Required
+                  </p>
+                  <p className="text-sm">
+                    Please sign in to start chatting with our AI assistant.
+                  </p>
+                  <p className="text-xs mt-2 text-blue-600">
+                    Only authenticated users can access the chat for security and personalization.
+                  </p>
+                </>
+              )}
+            </div>
           )}
           {messages.map((message) => (
             <div key={message.id} className={`mb-4 ${message.role === 'user' ? 'text-right' : 'text-left'}`}>
@@ -207,7 +211,7 @@ export default function Chat() {
                 }`}
               >
                 <p className="text-sm font-medium mb-1">
-                  {message.role === 'user' ? (isSignedIn ? userName : 'Guest') : 'AI'}
+                  {message.role === 'user' ? (user?.name || user?.email || 'You') : 'AI Assistant'}
                 </p>
                 <p className="whitespace-pre-wrap">{message.content}</p>
               </div>
@@ -216,8 +220,15 @@ export default function Chat() {
           {isLoading && (
             <div className="text-left">
               <div className="inline-block max-w-xs lg:max-w-md px-4 py-2 rounded-lg bg-white text-gray-800 border">
-                <p className="text-sm font-medium mb-1">AI</p>
-                <p>Thinking...</p>
+                <p className="text-sm font-medium mb-1">AI Assistant</p>
+                <div className="flex items-center">
+                  <div className="animate-pulse flex space-x-1">
+                    <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
+                    <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
+                    <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
+                  </div>
+                  <span className="ml-2 text-sm text-gray-500">Thinking...</span>
+                </div>
               </div>
             </div>
           )}
@@ -226,16 +237,16 @@ export default function Chat() {
 
       <form onSubmit={handleSubmit} className="flex gap-2">
         <input
-          className="flex-1 p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="flex-1 p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
           value={input}
-          placeholder="Type your message..."
+          placeholder={user ? "Type your message..." : "Please sign in to use the chat"}
           onChange={(e) => setInput(e.target.value)}
-          disabled={isLoading}
+          disabled={isLoading || !user}
         />
         <button
           type="submit"
-          disabled={isLoading}
-          className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+          disabled={isLoading || !user}
+          className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Send
         </button>

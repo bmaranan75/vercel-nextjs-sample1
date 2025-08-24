@@ -1,45 +1,54 @@
 import OpenAI from 'openai';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { getSession } from '@auth0/nextjs-auth0';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
+    // Check if user is authenticated
+    const session = await getSession();
+    if (!session?.user) {
+      return NextResponse.json({ 
+        error: 'Authentication required. Please sign in to use the chat.' 
+      }, { status: 401 });
+    }
+
     const { messages } = await req.json();
 
-    const response = await openai.chat.completions.create({
+    const systemMessage = {
+      role: 'system' as const,
+      content: 'You are a helpful AI assistant named AI Chat App. You provide helpful, informative, and friendly responses.'
+    };
+
+    const stream = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
+      messages: [systemMessage, ...messages],
       stream: true,
-      messages,
     });
 
     const encoder = new TextEncoder();
-
-    const stream = new ReadableStream({
+    const readable = new ReadableStream({
       async start(controller) {
-        for await (const chunk of response) {
-          const content = chunk.choices[0]?.delta?.content;
-          if (content) {
-            const text = `data: ${JSON.stringify({ content })}\n\n`;
-            controller.enqueue(encoder.encode(text));
-          }
+        for await (const chunk of stream) {
+          const content = chunk.choices[0]?.delta?.content || '';
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content })}\n\n`));
         }
         controller.enqueue(encoder.encode('data: [DONE]\n\n'));
         controller.close();
       },
     });
 
-    return new Response(stream, {
+    return new Response(readable, {
       headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Transfer-Encoding': 'chunked',
       },
     });
   } catch (error) {
-    console.error('Error:', error);
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    console.error('Error in chat API:', error);
+    return NextResponse.json({ error: 'Failed to process chat request' }, { status: 500 });
   }
 }
