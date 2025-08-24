@@ -1,10 +1,12 @@
-# Next.js OpenAI Chat App
+# Next.js OpenAI Chat App with Weather Tool
 
-A simple chat application built with Next.js 15 and OpenAI API that can be deployed to Vercel.
+A simple chat application built with Next.js 15 and OpenAI API with weather tool functionality that can be deployed to Vercel.
 
 ## Features
 
-- 🤖 Real-time chat with OpenAI GPT-3.5 Turbo
+- 🤖 Real-time chat with OpenAI GPT-4o Mini
+- 🌤️ Weather tool integration using OpenAI function calling
+- 🔐 Auth0 authentication integration
 - 📱 Responsive design with Tailwind CSS
 - ⚡ Streaming responses for better UX
 - 🚀 Ready for Vercel deployment

@@ -12,6 +12,7 @@
     "@ai-sdk/openai": "^2.0.19",
     "@auth0/nextjs-auth0": "^3.5.0",
     "ai": "^4.3.19",
+    "googleapis": "^157.0.0",
     "next": "15.5.0",
     "openai": "^5.15.0",
     "react": "19.1.0",
