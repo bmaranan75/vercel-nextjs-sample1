@@ -9,6 +9,12 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   needsCalendarAuth?: boolean;
+  tableData?: {
+    headers: string[];
+    rows: string[][];
+    title?: string;
+    summary?: string;
+  };
 }
 
 export default function Chat() {
@@ -95,8 +101,9 @@ export default function Chat() {
     }
   };
 
-  // Render message content with special handling for calendar auth
+  // Render message content with special handling for calendar auth and tables
   const renderMessageContent = (message: Message) => {
+    // Handle calendar auth button
     if (message.needsCalendarAuth && message.content.includes('{{CALENDAR_AUTH_BUTTON}}')) {
       const parts = message.content.split('{{CALENDAR_AUTH_BUTTON}}');
       return (
@@ -115,6 +122,59 @@ export default function Chat() {
             Grant Google Calendar Access
           </button>
           <p className="whitespace-pre-wrap">{parts[1]}</p>
+        </div>
+      );
+    }
+
+    // Handle table data
+    if (message.tableData) {
+      return (
+        <div>
+          {message.tableData.title && (
+            <h4 className="font-semibold mb-3 text-gray-800">{message.tableData.title}</h4>
+          )}
+          
+          <div className="overflow-x-auto bg-white rounded-lg border border-gray-200 shadow-sm">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  {message.tableData.headers.map((header, index) => (
+                    <th
+                      key={index}
+                      className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    >
+                      {header}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {message.tableData.rows.map((row, rowIndex) => (
+                  <tr key={rowIndex} className="hover:bg-gray-50">
+                    {row.map((cell, cellIndex) => (
+                      <td
+                        key={cellIndex}
+                        className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap"
+                      >
+                        {cell}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          
+          {message.tableData.summary && (
+            <div className="mt-3 text-sm text-gray-600 bg-gray-50 p-3 rounded-lg">
+              <p className="whitespace-pre-wrap">{message.tableData.summary}</p>
+            </div>
+          )}
+          
+          {/* Render any additional content */}
+          {message.content && !message.content.includes('```') && (
+            <p className="whitespace-pre-wrap mt-3">{message.content}</p>
+          )}
         </div>
       );
     }
@@ -189,14 +249,15 @@ export default function Chat() {
                 
                 try {
                   const parsed = JSON.parse(data);
-                  if (parsed.content) {
+                  if (parsed.content || parsed.tableData) {
                     setMessages(prev => 
                       prev.map(msg => 
                         msg.id === assistantMessage.id 
                           ? { 
                               ...msg, 
-                              content: msg.content + parsed.content,
-                              needsCalendarAuth: parsed.needsCalendarAuth || msg.needsCalendarAuth
+                              content: parsed.content ? msg.content + parsed.content : msg.content,
+                              needsCalendarAuth: parsed.needsCalendarAuth || msg.needsCalendarAuth,
+                              tableData: parsed.tableData || msg.tableData
                             }
                           : msg
                       )
