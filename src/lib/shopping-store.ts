@@ -57,26 +57,48 @@ export function getCart(userId: string): Cart {
 }
 
 export function addToCart(userId: string, productId: string, quantity: number): boolean {
-  // Check if product exists
-  const product = PRODUCTS.find(p => p.id === productId);
-  if (!product) return false;
+  console.log('Adding to cart - User ID:', userId, 'Product ID:', productId, 'Quantity:', quantity);
+  
+  // Check if product exists by ID first, then by name (case-insensitive)
+  let product = PRODUCTS.find(p => p.id === productId);
+  
+  // If not found by ID, try to find by name (case-insensitive)
+  if (!product) {
+    product = PRODUCTS.find(p => p.name.toLowerCase() === productId.toLowerCase());
+  }
+  
+  if (!product) {
+    console.log('Product not found:', productId);
+    return false;
+  }
+
+  console.log('Found product:', product);
 
   const cart = getCart(userId);
-  const existingItem = cart.items.find(item => item.productId === productId);
+  console.log('Cart before adding:', cart);
+  
+  const existingItem = cart.items.find(item => item.productId === product!.id);
   
   if (existingItem) {
     existingItem.quantity += quantity;
+    console.log('Updated existing item:', existingItem);
   } else {
-    cart.items.push({ productId, quantity });
+    cart.items.push({ productId: product.id, quantity });
+    console.log('Added new item to cart');
   }
   
+  console.log('Cart after adding:', cart);
   return true;
 }
 
 export function getCartWithProducts(userId: string) {
+  console.log('Getting cart with products for user:', userId);
   const cart = getCart(userId);
+  console.log('Retrieved cart:', cart);
+  
   const cartWithProducts = cart.items.map(item => {
     const product = PRODUCTS.find(p => p.id === item.productId);
+    console.log('Mapping item:', item, 'Found product:', product);
     return {
       product,
       quantity: item.quantity,
@@ -86,8 +108,20 @@ export function getCartWithProducts(userId: string) {
   
   const total = cartWithProducts.reduce((sum, item) => sum + item.subtotal, 0);
   
-  return {
+  const result = {
     items: cartWithProducts,
     total
   };
+  
+  console.log('Cart with products result:', result);
+  return result;
+}
+
+export function clearCart(userId: string): boolean {
+  const cartIndex = carts.findIndex(cart => cart.userId === userId);
+  if (cartIndex !== -1) {
+    carts[cartIndex].items = [];
+    return true;
+  }
+  return false;
 }

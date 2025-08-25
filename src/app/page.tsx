@@ -23,6 +23,17 @@ export default function Chat() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Function to scroll to bottom of chat
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  // Scroll to bottom when messages change
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
 
   // Focus the input when user is authenticated and not loading
   useEffect(() => {
@@ -30,6 +41,17 @@ export default function Chat() {
       inputRef.current.focus();
     }
   }, [user, isLoading]);
+
+  // Handle clearing chat history
+  const handleClearChat = () => {
+    setMessages([]);
+    // Refocus the input after clearing
+    setTimeout(() => {
+      if (inputRef.current) {
+        inputRef.current.focus();
+      }
+    }, 100);
+  };
 
   // Handle Google Calendar authorization
   const handleGoogleAuth = async () => {
@@ -108,12 +130,12 @@ export default function Chat() {
       const parts = message.content.split('{{CALENDAR_AUTH_BUTTON}}');
       return (
         <div>
-          <p className="whitespace-pre-wrap">{parts[0]}</p>
+          <p className="whitespace-pre-wrap text-sm">{parts[0]}</p>
           <button
             onClick={handleGoogleAuth}
-            className="my-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-colors inline-flex items-center gap-2"
+            className="my-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded-lg transition-colors inline-flex items-center gap-2"
           >
-            <svg className="w-4 h-4" viewBox="0 0 24 24">
+            <svg className="w-3 h-3" viewBox="0 0 24 24">
               <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
               <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
               <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
@@ -121,7 +143,7 @@ export default function Chat() {
             </svg>
             Grant Google Calendar Access
           </button>
-          <p className="whitespace-pre-wrap">{parts[1]}</p>
+          <p className="whitespace-pre-wrap text-sm">{parts[1]}</p>
         </div>
       );
     }
@@ -131,17 +153,17 @@ export default function Chat() {
       return (
         <div>
           {message.tableData.title && (
-            <h4 className="font-semibold mb-3 text-gray-800">{message.tableData.title}</h4>
+            <h4 className="font-semibold mb-2 text-sm text-gray-800">{message.tableData.title}</h4>
           )}
           
-          <div className="overflow-x-auto bg-white rounded-lg border border-gray-200 shadow-sm">
-            <table className="min-w-full divide-y divide-gray-200">
+          <div className="overflow-x-auto bg-white rounded-lg border border-gray-200 shadow-sm w-full">
+            <table className="w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
                   {message.tableData.headers.map((header, index) => (
                     <th
                       key={index}
-                      className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                      className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                     >
                       {header}
                     </th>
@@ -154,7 +176,7 @@ export default function Chat() {
                     {row.map((cell, cellIndex) => (
                       <td
                         key={cellIndex}
-                        className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap"
+                        className="px-2 py-2 text-xs text-gray-900 whitespace-nowrap"
                       >
                         {cell}
                       </td>
@@ -166,20 +188,41 @@ export default function Chat() {
           </div>
           
           {message.tableData.summary && (
-            <div className="mt-3 text-sm text-gray-600 bg-gray-50 p-3 rounded-lg">
+            <div className="mt-2 text-xs text-gray-600 bg-gray-50 p-2 rounded-lg">
               <p className="whitespace-pre-wrap">{message.tableData.summary}</p>
             </div>
           )}
           
           {/* Render any additional content */}
           {message.content && !message.content.includes('```') && (
-            <p className="whitespace-pre-wrap mt-3">{message.content}</p>
+            <>
+              {message.content.includes('<div') || message.content.includes('<html') ? (
+                <div 
+                  className="mt-2 text-sm" 
+                  dangerouslySetInnerHTML={{ __html: message.content }}
+                />
+              ) : (
+                <p className="whitespace-pre-wrap mt-2 text-sm">{message.content}</p>
+              )}
+            </>
           )}
         </div>
       );
     }
     
-    return <p className="whitespace-pre-wrap">{message.content}</p>;
+    // Check if content contains HTML and render accordingly
+    const isHtmlContent = message.content.includes('<div') || message.content.includes('<html') || message.content.includes('<a href');
+    
+    if (isHtmlContent) {
+      return (
+        <div 
+          className="whitespace-pre-wrap text-sm" 
+          dangerouslySetInnerHTML={{ __html: message.content }}
+        />
+      );
+    }
+    
+    return <p className="whitespace-pre-wrap text-sm">{message.content}</p>;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -328,6 +371,16 @@ export default function Chat() {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              {/* New Chat Button */}
+              <button
+                onClick={handleClearChat}
+                className="w-8 h-8 bg-blue-600 hover:bg-blue-700 text-white rounded-full flex items-center justify-center transition-colors group"
+                title="Start New Chat"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+              </button>
               {error && (
                 <span className="text-xs bg-red-500 px-2 py-1 rounded">
                   Auth Error
@@ -381,7 +434,7 @@ export default function Chat() {
           {messages.map((message) => (
             <div key={message.id} className={`mb-4 ${message.role === 'user' ? 'text-right' : 'text-left'}`}>
               <div
-                className={`inline-block max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
+                className={`inline-block max-w-sm lg:max-w-lg px-3 py-2 rounded-lg text-sm ${
                   message.role === 'user'
                     ? 'bg-blue-500 text-white'
                     : 'bg-white text-gray-800 border'
@@ -409,6 +462,8 @@ export default function Chat() {
               </div>
             </div>
           )}
+          {/* Invisible element to scroll to */}
+          <div ref={messagesEndRef} />
         </div>
       </div>
 

@@ -17,6 +17,8 @@ export async function GET(request: NextRequest) {
   try {
     // Check if user is authenticated with Auth0
     const session = await getSession();
+    console.log('Calendar API - Session:', session?.user ? { sub: session.user.sub, email: session.user.email } : 'No session');
+    
     if (!session?.user) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
@@ -26,15 +28,21 @@ export async function GET(request: NextRequest) {
     const timeMin = searchParams.get('timeMin') || new Date().toISOString();
     const timeMax = searchParams.get('timeMax') || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(); // 7 days from now
 
+    console.log('Calendar API - Looking for tokens for userId:', userId);
+    console.log('Calendar API - Available token users:', Object.keys(global.googleTokens || {}));
+
     // Check if we have stored tokens for this user
     const tokens = global.googleTokens?.[userId];
     if (!tokens) {
+      console.log('Calendar API - No tokens found for user:', userId);
       return NextResponse.json({ 
         error: 'Google Calendar authorization required',
         needsAuth: true,
         authUrl: `/api/auth/google?userId=${encodeURIComponent(userId)}`
       }, { status: 403 });
     }
+
+    console.log('Calendar API - Found tokens for user:', userId, 'Token keys:', Object.keys(tokens));
 
     // Set the credentials
     oauth2Client.setCredentials(tokens);
