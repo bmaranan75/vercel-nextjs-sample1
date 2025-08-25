@@ -30,10 +30,16 @@ export async function GET(request: NextRequest) {
     // Exchange the authorization code for tokens
     const { tokens } = await oauth2Client.getToken(code);
     
+    console.log('Google Auth Callback - Received tokens for state (userId):', state);
+    console.log('Google Auth Callback - Token types received:', Object.keys(tokens));
+    
     // Store the tokens temporarily (in a real app, you'd store this in a database)
     // For this demo, we'll store it in a simple in-memory store
     global.googleTokens = global.googleTokens || {};
     global.googleTokens[state] = tokens;
+    
+    console.log('Google Auth Callback - Stored tokens for userId:', state);
+    console.log('Google Auth Callback - All stored users:', Object.keys(global.googleTokens));
 
     return NextResponse.redirect(new URL('/auth-success?type=google', request.url));
   } catch (error) {
