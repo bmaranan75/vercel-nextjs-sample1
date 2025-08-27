@@ -30,6 +30,102 @@ export default function Chat() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  // Initialize popup authorization function
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.openAuth0Popup = (popupRequestId?: string): Promise<any> => {
+        if (!user?.sub) {
+          console.error('User not authenticated');
+          return Promise.reject(new Error('User not authenticated'));
+        }
+
+        const state = popupRequestId 
+          ? JSON.stringify({ action: 'popup_checkout', userId: user.sub, popupRequestId })
+          : JSON.stringify({ action: 'popup_checkout', userId: user.sub });
+
+        const authUrl = `https://dev-ykxaa4dq35hmxhe2.us.auth0.com/authorize?` +
+          `response_type=code&` +
+          `client_id=eoACM0hNvrAPPyVMtaHaKlUszRVYXz9X&` +
+          `redirect_uri=${encodeURIComponent('http://localhost:3000/auth-success')}&` +
+          `scope=openid profile email&` +
+          `audience=${encodeURIComponent('http://localhost:5000/api/checkout')}&` +
+          `state=${encodeURIComponent(state)}`;
+
+        const popup = window.open(
+          authUrl,
+          'auth0Popup',
+          'width=500,height=600,scrollbars=yes,resizable=yes'
+        );
+
+        return new Promise((resolve, reject) => {
+          const checkClosed = setInterval(() => {
+            if (popup?.closed) {
+              clearInterval(checkClosed);
+              reject(new Error('Popup was closed by user'));
+            }
+          }, 1000);
+
+          const messageListener = (event: MessageEvent) => {
+            console.log('Received message in popup listener:', event.data);
+            if (event.origin !== window.location.origin) {
+              console.log('Message origin mismatch:', event.origin, 'vs', window.location.origin);
+              return;
+            }
+            
+            if (event.data.type === 'AUTH_SUCCESS') {
+              console.log('Processing AUTH_SUCCESS');
+              clearInterval(checkClosed);
+              popup?.close();
+              window.removeEventListener('message', messageListener);
+              
+              // Process checkout completion
+              console.log('Calling checkout completion API');
+              fetch('/api/checkout', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                  action: 'popup_checkout_complete',
+                  userId: user.sub,
+                  code: event.data.code,
+                  state: event.data.state,
+                  popupRequestId: popupRequestId
+                })
+              })
+              .then(response => {
+                console.log('Checkout response:', response);
+                return response.json();
+              })
+              .then(result => {
+                console.log('Checkout result:', result);
+                resolve(result);
+              })
+              .catch(error => {
+                console.error('Checkout error:', error);
+                reject(error);
+              });
+              
+            } else if (event.data.type === 'AUTH_ERROR') {
+              console.log('Processing AUTH_ERROR:', event.data.error);
+              clearInterval(checkClosed);
+              popup?.close();
+              window.removeEventListener('message', messageListener);
+              reject(new Error(event.data.error || 'Authentication failed'));
+            }
+          };
+          
+          window.addEventListener('message', messageListener);
+        });
+      };
+    }
+
+    // Cleanup on unmount
+    return () => {
+      if (typeof window !== 'undefined') {
+        delete window.openAuth0Popup;
+      }
+    };
+  }, [user]);
+
   // Scroll to bottom when messages change
   useEffect(() => {
     scrollToBottom();

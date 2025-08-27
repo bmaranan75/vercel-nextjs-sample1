@@ -1,3 +1,6 @@
+import { writeFileSync, readFileSync, existsSync } from 'fs';
+import { join } from 'path';
+
 // In-memory shopping store
 export interface Product {
   id: string;
@@ -40,18 +43,62 @@ export const PRODUCTS: Product[] = [
   { id: '20', name: 'Salmon', description: 'Atlantic salmon fillet, per pound', price: 12.99 }
 ];
 
-// In-memory cart storage
-const carts: Cart[] = [];
+// Cart storage with persistence to avoid Next.js hot reload issues
+const CART_FILE = join(process.cwd(), '.tmp-carts.json');
+
+function loadCarts(): Cart[] {
+  try {
+    if (existsSync(CART_FILE)) {
+      const data = readFileSync(CART_FILE, 'utf8');
+      const carts = JSON.parse(data);
+      console.log('=== LOADED CARTS FROM FILE ===');
+      console.log('Loaded carts:', carts.map((c: Cart) => ({ userId: c.userId, itemCount: c.items.length })));
+      return carts;
+    }
+  } catch (error) {
+    console.log('Error loading carts from file:', error);
+  }
+  console.log('=== CREATING NEW EMPTY CARTS ARRAY ===');
+  return [];
+}
+
+function saveCarts(carts: Cart[]): void {
+  try {
+    writeFileSync(CART_FILE, JSON.stringify(carts, null, 2));
+    console.log('=== SAVED CARTS TO FILE ===');
+    console.log('Saved carts:', carts.map(c => ({ userId: c.userId, itemCount: c.items.length })));
+  } catch (error) {
+    console.log('Error saving carts to file:', error);
+  }
+}
+
+// In-memory cart storage with file persistence
+let carts: Cart[] = loadCarts();
+
+// Debug: Log when module is loaded
+console.log('=== SHOPPING STORE MODULE LOADED ===');
+console.log('Timestamp:', new Date().toISOString());
+console.log('Carts array initialized:', carts.length, 'carts');
 
 export function getProducts(): Product[] {
   return PRODUCTS;
 }
 
 export function getCart(userId: string): Cart {
+  console.log('=== GET CART CALLED ===');
+  console.log('User ID:', userId);
+  console.log('Total carts in storage:', carts.length);
+  console.log('All carts:', carts.map(c => ({ userId: c.userId, itemCount: c.items.length })));
+  
   let cart = carts.find(c => c.userId === userId);
   if (!cart) {
+    console.log('Creating new cart for user:', userId);
     cart = { userId, items: [] };
     carts.push(cart);
+    saveCarts(carts); // Save after adding new cart
+    console.log('New cart added. Total carts now:', carts.length);
+  } else {
+    console.log('Found existing cart for user:', userId, 'with', cart.items.length, 'items');
   }
   return cart;
 }
@@ -88,6 +135,7 @@ export function addToCart(userId: string, productId: string, quantity: number): 
   }
   
   console.log('Cart after adding:', cart);
+  saveCarts(carts); // Save after adding item
   return true;
 }
 
@@ -118,10 +166,18 @@ export function getCartWithProducts(userId: string) {
 }
 
 export function clearCart(userId: string): boolean {
+  console.log('=== CLEAR CART CALLED ===');
+  console.log('User ID:', userId);
+  console.log('Current carts before clearing:', carts.map(c => ({ userId: c.userId, itemCount: c.items.length })));
+  console.log('Stack trace:', new Error().stack);
+  
   const cartIndex = carts.findIndex(cart => cart.userId === userId);
   if (cartIndex !== -1) {
     carts[cartIndex].items = [];
+    saveCarts(carts); // Save after clearing cart
+    console.log('Cart cleared for user:', userId);
     return true;
   }
+  console.log('No cart found to clear for user:', userId);
   return false;
 }

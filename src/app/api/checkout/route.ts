@@ -19,12 +19,46 @@ export async function POST(request: NextRequest) {
     
     // Check if this is a CIBA-based checkout
     const requestBody = await request.json().catch(() => ({}));
-    const { authReqId } = requestBody;
+    const { authReqId, action, userId: requestUserId, popupRequestId } = requestBody;
     console.log('Checkout API - Auth Request ID:', authReqId);
+    console.log('Checkout API - Action:', action);
+    console.log('Checkout API - Popup Request ID:', popupRequestId);
     
     let cartData;
     
-    if (authReqId) {
+    // Handle popup checkout completion
+    if (action === 'popup_checkout_complete') {
+      console.log('=== POPUP CHECKOUT COMPLETION ===');
+      console.log('User ID from session:', userId);
+      console.log('User ID from request:', requestUserId);
+      console.log('Popup Request ID:', popupRequestId);
+      
+      // Use current cart for popup checkout
+      cartData = getCartWithProducts(userId);
+      console.log('Popup checkout - Cart data retrieved:', cartData);
+      
+      // Update popup request status if provided
+      if (popupRequestId) {
+        try {
+          const { updatePopupRequest } = await import('../../../lib/popup-storage');
+          const result = {
+            success: true,
+            itemCount: cartData.items.length,
+            total: cartData.total,
+            items: cartData.items.map(item => ({
+              name: item.product?.name || 'Unknown Product',
+              quantity: item.quantity,
+              price: item.product?.price || 0
+            }))
+          };
+          
+          updatePopupRequest(popupRequestId, 'completed', result);
+          console.log('Updated popup request status to completed');
+        } catch (error) {
+          console.error('Error updating popup request status:', error);
+        }
+      }
+    } else if (authReqId) {
       // CIBA-based checkout: use cart data from the authorization request
       console.log('Checkout API - Using CIBA cart data for authReqId:', authReqId);
       const cibaRequest = getCibaRequest(authReqId);
@@ -88,9 +122,10 @@ export async function POST(request: NextRequest) {
     // Generate order ID
     const orderId = `ORD-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-    // Clear the cart (this completes the checkout)
-    const { clearCart } = await import('../../../lib/shopping-store');
-    clearCart(userId);
+    // TEMPORARILY COMMENTED OUT - Clear the cart (this completes the checkout)
+    // const { clearCart } = await import('../../../lib/shopping-store');
+    // clearCart(userId);
+    console.log('TESTING: Cart clearing disabled - cart will remain for testing');
     
     // Clean up CIBA request if this was a CIBA-based checkout
     if (authReqId) {
