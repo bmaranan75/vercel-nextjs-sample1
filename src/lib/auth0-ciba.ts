@@ -39,15 +39,21 @@ export class Auth0CibaService {
   private tokenEndpoint: string;
 
   constructor() {
-    this.clientId = process.env.AUTH0_AI_CLIENT_ID!;
-    this.clientSecret = process.env.AUTH0_AI_CLIENT_SECRET!;
-    this.domain = process.env.AUTH0_ISSUER_BASE_URL!.replace('https://', '');
-    this.cibaEndpoint = process.env.AUTH0_CIBA_ENDPOINT!;
-    this.tokenEndpoint = process.env.AUTH0_TOKEN_ENDPOINT!;
+    const clientId = process.env.AUTH0_AI_CLIENT_ID;
+    const clientSecret = process.env.AUTH0_AI_CLIENT_SECRET;
+    const issuerBaseUrl = process.env.AUTH0_ISSUER_BASE_URL;
+    const cibaEndpoint = process.env.AUTH0_CIBA_ENDPOINT;
+    const tokenEndpoint = process.env.AUTH0_TOKEN_ENDPOINT;
 
-    if (!this.clientId || !this.clientSecret || !this.domain) {
-      throw new Error('Auth0 CIBA configuration is missing. Please check your environment variables.');
+    if (!clientId || !clientSecret || !issuerBaseUrl || !cibaEndpoint || !tokenEndpoint) {
+      throw new Error('Auth0 CIBA configuration is missing. Please check your environment variables: AUTH0_AI_CLIENT_ID, AUTH0_AI_CLIENT_SECRET, AUTH0_ISSUER_BASE_URL, AUTH0_CIBA_ENDPOINT, AUTH0_TOKEN_ENDPOINT');
     }
+
+    this.clientId = clientId;
+    this.clientSecret = clientSecret;
+    this.domain = issuerBaseUrl.replace('https://', '');
+    this.cibaEndpoint = cibaEndpoint;
+    this.tokenEndpoint = tokenEndpoint;
   }
 
   /**
@@ -141,8 +147,8 @@ export class Auth0CibaService {
    */
   async pollCibaToken(authReqId: string): Promise<CibaTokenResponse> {
     // Use Machine-to-Machine client for token polling (separate from AI client for initiation)
-    const m2mClientId = process.env.AUTH0_M2M_CLIENT_ID!;
-    const m2mClientSecret = process.env.AUTH0_M2M_CLIENT_SECRET!;
+    const m2mClientId = process.env.AUTH0_M2M_CLIENT_ID;
+    const m2mClientSecret = process.env.AUTH0_M2M_CLIENT_SECRET;
     
     if (!m2mClientId || !m2mClientSecret) {
       throw new Error('Auth0 M2M credentials are missing. Please check AUTH0_M2M_CLIENT_ID and AUTH0_M2M_CLIENT_SECRET environment variables.');
