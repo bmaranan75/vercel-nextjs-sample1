@@ -46,9 +46,9 @@ export default function Chat() {
         const authUrl = `https://dev-ykxaa4dq35hmxhe2.us.auth0.com/authorize?` +
           `response_type=code&` +
           `client_id=eoACM0hNvrAPPyVMtaHaKlUszRVYXz9X&` +
-          `redirect_uri=${encodeURIComponent('http://localhost:3000/auth-success')}&` +
+          `redirect_uri=${encodeURIComponent('https://my-personal-ai-assistant-git-main-bmaranan75s-projects.vercel.app/auth-success')}&` +
           `scope=openid profile email&` +
-          `audience=${encodeURIComponent('http://localhost:5000/api/checkout')}&` +
+          `audience=${encodeURIComponent('https://my-personal-ai-assistant-git-main-bmaranan75s-projects.vercel.app/api/checkout')}&` +
           `state=${encodeURIComponent(state)}`;
 
         const popup = window.open(
