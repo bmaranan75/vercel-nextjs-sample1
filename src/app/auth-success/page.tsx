@@ -7,10 +7,20 @@ function AuthSuccessContent() {
   const searchParams = useSearchParams();
   const [status, setStatus] = useState<'success' | 'error' | 'loading'>('loading');
   const error = searchParams.get('error');
+  const code = searchParams.get('code');
+  const state = searchParams.get('state');
 
   useEffect(() => {
+    console.log('Auth success page loaded');
+    console.log('Search params:', Object.fromEntries(searchParams.entries()));
+    console.log('Code:', code);
+    console.log('State:', state);
+    console.log('Error:', error);
+    console.log('Window opener exists:', !!window.opener);
+
     if (error) {
       setStatus('error');
+      console.log('Sending AUTH_ERROR message');
       // Send error message to parent window
       if (window.opener) {
         window.opener.postMessage({
@@ -18,24 +28,53 @@ function AuthSuccessContent() {
           error: error
         }, window.location.origin);
         
+        // Also send generic auth error for popup checkout
+        window.opener.postMessage({
+          type: 'AUTH_ERROR',
+          error: error
+        }, window.location.origin);
+        
         setTimeout(() => {
           window.close();
         }, 3000);
       }
-    } else {
+    } else if (code) {
+      // We have an authorization code from Auth0
       setStatus('success');
+      console.log('Sending AUTH_SUCCESS message');
       // Send success message to parent window
       if (window.opener) {
         window.opener.postMessage({
           type: 'GOOGLE_AUTH_SUCCESS'
         }, window.location.origin);
         
+        // Also send generic auth success for popup checkout
+        window.opener.postMessage({
+          type: 'AUTH_SUCCESS',
+          code: code,
+          state: state
+        }, window.location.origin);
+        
         setTimeout(() => {
           window.close();
         }, 2000);
       }
+    } else {
+      // No code and no error - something's wrong
+      console.log('No code or error received');
+      setStatus('error');
+      if (window.opener) {
+        window.opener.postMessage({
+          type: 'AUTH_ERROR',
+          error: 'No authorization code received'
+        }, window.location.origin);
+        
+        setTimeout(() => {
+          window.close();
+        }, 3000);
+      }
     }
-  }, [error]);
+  }, [error, code, state, searchParams]);
 
   const getContent = () => {
     if (status === 'error') {

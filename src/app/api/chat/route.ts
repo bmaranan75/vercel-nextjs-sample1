@@ -1,7 +1,7 @@
 import OpenAI from 'openai';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@auth0/nextjs-auth0';
-import { getProducts, addToCart, getCartWithProducts } from '../../../lib/shopping-store';
+import { getProducts, addToCart, getCartWithProducts, clearCart } from '../../../lib/shopping-store';
 import { createCibaRequest } from '../../../lib/ciba-storage';
 
 const openai = new OpenAI({
@@ -21,7 +21,8 @@ SHOPPING COMMANDS:
 - "show products" or "list products" → Use list_products to display all available grocery items
 - "add [product] to cart" → Use add_to_cart with the exact product ID from the product list
 - "show cart" or "view cart" → Use view_cart to display current cart contents
-- "checkout" → Use async_checkout to initiate secure checkout with user authorization
+- "checkout" → Use async_checkout to initiate secure Auth0 CIBA checkout with push notification (default)
+- "popup checkout" or "web checkout" → Use popup_checkout only when specifically requested
 
 CALENDAR COMMANDS:
 - "show my calendar" or "what's on my schedule?" → Use get_calendar to view your upcoming events
@@ -38,7 +39,18 @@ SHOPPING INSTRUCTIONS:
 3. For adding items to cart, use the EXACT product ID (like 1, 2, 3, etc.) from the products list
 4. Always confirm successful cart additions with a friendly message
 5. Display cart contents in a clear table format with product names, prices, and quantities
-6. When checking out, use async_checkout which will send a push notification for user authorization
+6. For checkout requests:
+   - **DEFAULT**: Always use async_checkout for "checkout" requests (Auth0 CIBA with push notifications)
+   - **ALTERNATIVE**: Only use popup_checkout when specifically requested ("popup checkout" or "web checkout")
+7. When using async_checkout (default):
+   - This sends a real push notification to the user's authenticated device
+   - The system will poll for authorization completion and automatically complete the checkout
+   - No popup windows required - everything is handled via secure push notifications
+   - Always mention the popup alternative at the end of the CIBA response
+8. When using popup_checkout (only when specifically requested):
+   - Opens a traditional Auth0 authorization popup window
+   - User completes authorization in the web browser
+   - Suitable when push notifications are not available
 
 OTHER FUNCTIONS:
 - get_weather: Get current weather for any city
@@ -116,7 +128,19 @@ Be helpful, friendly, and respond directly to what the user is asking for withou
         type: 'function' as const,
         function: {
           name: 'async_checkout',
-          description: 'Initiate secure checkout with asynchronous user authorization via push notification',
+          description: 'Initiate secure checkout with Auth0 CIBA push notification authorization',
+          parameters: {
+            type: 'object',
+            properties: {},
+            required: []
+          }
+        }
+      },
+      {
+        type: 'function' as const,
+        function: {
+          name: 'popup_checkout',
+          description: 'Initiate secure checkout with Auth0 popup web page authorization (traditional flow)',
           parameters: {
             type: 'object',
             properties: {},
@@ -487,299 +511,485 @@ ${event.description ? `- **Description:** ${event.description}\n` : ''}${event.l
 
                         const userId = session.user.sub;
 
-                        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: '\n\n🛒 **Initiating Secure Checkout...**\n\nStarting authorization process...' })}\n\n`));
+                        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: '\n\n🛒 **Initiating Secure Checkout with Auth0 CIBA...**\n\n📱 Sending push notification to your authenticated device...' })}\n\n`));
 
-                        // Get cart with products directly (instead of fetch call)
+                        // Get cart with products
                         const cartData = getCartWithProducts(userId);
-                        console.log('Async checkout - Cart data:', cartData);
+                        console.log('=== ASYNC_CHECKOUT INITIATED ===');
+                        console.log('User ID:', userId);
+                        console.log('Cart Data:', JSON.stringify(cartData, null, 2));
                         
                         if (!cartData.items || cartData.items.length === 0) {
                           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: '\n\n❌ Your cart is empty. Please add some items before checkout.' })}\n\n`));
                           continue;
                         }
 
-                        // Create CIBA authorization request directly
-                        const bindingMessage = `Checkout for ${cartData.items.length} item(s), Total: $${cartData.total.toFixed(2)}`;
-                        const authReqId = 'auth_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-                        const authorizationUrl = `${req.url.split('/api/chat')[0]}/authorize?auth_req_id=${authReqId}&binding_message=${encodeURIComponent(bindingMessage)}`;
+                        // Initiate Auth0 CIBA request
+                        console.log('=== CALLING CIBA CHECKOUT API ===');
+                        console.log('Request URL:', `${req.url.split('/api/chat')[0]}/api/ciba-checkout`);
+                        console.log('Request Headers:', {
+                          'Content-Type': 'application/json',
+                          'Cookie': req.headers.get('cookie') ? '[PRESENT]' : '[MISSING]'
+                        });
+                        
+                        const cibaResponse = await fetch(`${req.url.split('/api/chat')[0]}/api/ciba-checkout`, {
+                          method: 'POST',
+                          headers: {
+                            'Content-Type': 'application/json',
+                            'Cookie': req.headers.get('cookie') || ''
+                          }
+                        });
 
-                        // Store the CIBA request for later approval/denial
-                        console.log('Creating CIBA request:', { authReqId, userId, cartData });
-                        createCibaRequest(authReqId, userId, cartData);
-                        console.log('CIBA request created successfully');
+                        console.log('=== CIBA CHECKOUT API RESPONSE ===');
+                        console.log('Response Status:', cibaResponse.status);
+                        console.log('Response OK:', cibaResponse.ok);
 
-                        // Create authResult object for compatibility
-                        const authResult = {
-                          success: true,
-                          requiresAuthorization: true,
-                          authReqId,
-                          authorizationUrl,
-                          message: 'Authorization required for checkout',
-                          checkout: {
+                        let cibaData;
+                        try {
+                          cibaData = await cibaResponse.json();
+                          console.log('Response Data:', JSON.stringify(cibaData, null, 2));
+                        } catch (parseError) {
+                          console.error('Failed to parse response as JSON:', parseError);
+                          const responseText = await cibaResponse.text();
+                          console.error('Raw response:', responseText);
+                          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: '\n\n❌ Failed to parse CIBA response. Check server logs.' })}\n\n`));
+                          continue;
+                        }
+
+                        if (!cibaResponse.ok) {
+                          console.error('=== CIBA INITIATION FAILED ===');
+                          console.error('Failed Response Data:', JSON.stringify(cibaData, null, 2));
+                          
+                          // Handle specific CIBA configuration issues
+                          if (cibaData.message && cibaData.message.includes('Push notifications are not configured')) {
+                            const configErrorMessage = `
+
+❌ **Push Notifications Not Configured**
+
+Real Auth0 CIBA push notifications require additional setup:
+
+🔧 **Required Setup:**
+• Enable CIBA grant type in Auth0 Application settings
+• Configure Auth0 Guardian for push notifications  
+• User must have Auth0 Guardian mobile app installed
+• Device must be enrolled for push notifications
+
+📱 **Alternative for Testing:**
+• Use web-based authorization (popup window)
+• Or setup SMS-based authentication
+
+⚠️ **Current Status:** CIBA endpoints not properly configured for this tenant.
+
+💡 **Try saying "popup checkout" to use the web authorization method instead!**`;
+
+                            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: configErrorMessage })}\n\n`));
+                            continue;
+                          } else if (cibaData.message && cibaData.message.includes('No registered devices')) {
+                            const deviceErrorMessage = `
+
+📱 **No Registered Devices Found**
+
+Push notifications require a registered mobile device:
+
+📲 **Setup Required:**
+1. Install Auth0 Guardian mobile app
+2. Scan QR code to enroll device  
+3. Enable push notifications in the app
+
+💡 **Try saying "popup checkout" to use the web authorization method instead!**`;
+
+                            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: deviceErrorMessage })}\n\n`));
+                            continue;
+                          }
+                          
+                          // Generic error
+                          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: `\n\n❌ Failed to initiate checkout: ${cibaData.message}\n\n💡 **Try saying "popup checkout"** to use the web authorization method instead!` })}\n\n`));
+                          continue;
+                        }
+                        
+                        console.log('=== CIBA INITIATION SUCCESS ===');
+                        console.log('CIBA Response Data:', JSON.stringify(cibaData, null, 2));
+                        console.log('Auth Request ID:', cibaData.cibaResponse?.auth_req_id);
+                        console.log('Expires In:', cibaData.cibaResponse?.expires_in, 'seconds');
+                        console.log('Polling Interval:', cibaData.cibaResponse?.interval, 'seconds');
+
+                        // Show CIBA status message
+                        const cibaMessage = `
+
+🔐 **Push Notification Sent!**
+
+📱 Check your authenticated device for the authorization request:
+• **Checkout**: ${cibaData.cartData?.itemCount || 0} item(s)
+• **Total**: $${cibaData.cartData?.total?.toFixed(2) || '0.00'}
+• **Message**: "${cibaData.bindingMessage || 'Checkout authorization request'}"
+
+⏳ **Waiting for your approval...**
+
+The authorization request will expire in ${Math.round((cibaData.cibaResponse?.expires_in || 300) / 60)} minutes.
+
+---
+
+💡 **Alternative Option**: If you don't receive the push notification or prefer web-based authorization, you can say **"popup checkout"** to use the traditional browser popup flow instead.`;
+
+                        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ 
+                          content: cibaMessage,
+                          cibaAuthReqId: cibaData.cibaResponse?.auth_req_id,
+                          cibaCheckout: true 
+                        })}\n\n`));
+
+                        // Set async operation flag
+                        hasAsyncOperation = true;
+
+                        // Poll for CIBA completion
+                        const pollForCibaCompletion = async () => {
+                          const maxAttempts = Math.ceil((cibaData.cibaResponse?.expires_in || 300) / (cibaData.cibaResponse?.interval || 5)); // Use Auth0's recommended interval
+                          let attempts = 0;
+                          let slowDownDelay = cibaData.cibaResponse?.interval || 5;
+                          let consecutiveAuthErrors = 0;
+                          const maxAuthErrors = 3; // Stop after 3 consecutive 401/403 errors
+                          
+                          while (attempts < maxAttempts) {
+                            try {
+                              await new Promise(resolve => setTimeout(resolve, slowDownDelay * 1000));
+                              attempts++;
+                              
+                              console.log(`=== CIBA POLLING ATTEMPT ${attempts}/${maxAttempts} ===`);
+                              console.log('Auth Request ID:', cibaData.cibaResponse?.auth_req_id);
+                              console.log('Poll URL:', `${req.url.split('/api/chat')[0]}/api/ciba-checkout?auth_req_id=${cibaData.cibaResponse?.auth_req_id}`);
+                              
+                              // Poll the CIBA status
+                              const statusResponse = await fetch(`${req.url.split('/api/chat')[0]}/api/ciba-checkout?auth_req_id=${cibaData.cibaResponse?.auth_req_id}`, {
+                                method: 'GET',
+                                headers: {
+                                  'Cookie': req.headers.get('cookie') || ''
+                                }
+                              });
+
+                              const statusResult = await statusResponse.json();
+                              console.log(`=== CIBA POLL RESULT ${attempts} ===`);
+                              console.log('Response Status:', statusResponse.status);
+                              console.log('Response OK:', statusResponse.ok);
+                              console.log('Status Result:', JSON.stringify(statusResult, null, 2));
+
+                              // Check for persistent authorization errors (401/403 or unauthorized_client)
+                              if (statusResponse.status === 401 || statusResponse.status === 403 || 
+                                  (statusResult.status === 'pending' && statusResult.message && 
+                                   statusResult.message.includes('Authorization configuration issue detected'))) {
+                                consecutiveAuthErrors++;
+                                console.log(`=== AUTHORIZATION ERROR DETECTED ===`);
+                                console.log(`Status: ${statusResponse.status}, Message: ${statusResult.message}`);
+                                console.log(`Consecutive errors: ${consecutiveAuthErrors}/${maxAuthErrors}`);
+                                
+                                if (consecutiveAuthErrors >= maxAuthErrors) {
+                                  console.log('=== STOPPING POLLING DUE TO PERSISTENT AUTH ERRORS ===');
+                                  const authErrorMessage = `
+
+❌ **Authorization Configuration Issue**
+
+The checkout authorization is failing due to configuration issues:
+• **Error**: Authorization not allowed for the client
+• **Details**: CIBA grant type appears to not be enabled for the M2M client
+
+🔧 **This appears to be a persistent configuration issue.**
+
+💡 **Try saying "popup checkout"** to use the web authorization method instead!
+
+Your cart remains unchanged and you can retry with the alternative method.`;
+
+                                  controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: authErrorMessage })}\n\n`));
+                                  controller.close(); // Close controller to re-enable chatbox
+                                  return; // Exit polling early
+                                }
+                                
+                                // Continue polling for now, but we're tracking the errors
+                                console.log(`Authorization error ${consecutiveAuthErrors}/${maxAuthErrors}, continuing to poll...`);
+                                continue;
+                              } else {
+                                // Reset error counter on successful response
+                                consecutiveAuthErrors = 0;
+                              }
+
+                              if (statusResult.status === 'approved') {
+                                // Success! Authorization approved - now complete the checkout
+                                console.log('=== CIBA AUTHORIZATION APPROVED ===');
+                                console.log('Checkout details:', JSON.stringify(statusResult.checkout, null, 2));
+                                
+                                const session = await getSession();
+                                const userId = session?.user?.sub;
+                                
+                                if (userId) {
+                                  // TEMPORARILY COMMENTED OUT - Clear the cart only after successful authorization
+                                  console.log('TESTING: Cart clearing disabled - cart will remain for testing');
+                                  // clearCart(userId);
+                                  // console.log('Cart cleared successfully');
+                                } else {
+                                  console.error('Unable to clear cart - no user session');
+                                }
+                                
+                                const successMessage = `
+
+✅ **Checkout Approved & Completed!**
+
+🎉 Your order has been successfully processed:
+• **Items**: ${statusResult.checkout.itemCount} 
+• **Total**: $${statusResult.checkout.total.toFixed(2)}
+• **Completed**: ${new Date(statusResult.checkout.timestamp).toLocaleString()}
+
+🧪 **TESTING MODE**: Cart has been preserved for testing purposes!`;
+
+                                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: successMessage })}\n\n`));
+                                controller.close(); // Close controller to re-enable chatbox
+                                return; // Exit polling
+                              } else if (statusResult.status === 'denied') {
+                                // User denied the request
+                                const deniedMessage = `
+
+❌ **Checkout Denied**
+
+The authorization request was denied. Your cart remains unchanged.
+You can try again by saying "checkout" if you'd like to proceed.`;
+
+                                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: deniedMessage })}\n\n`));
+                                controller.close(); // Close controller to re-enable chatbox
+                                return; // Exit polling
+                              } else if (statusResult.status === 'expired') {
+                                // Request expired
+                                const expiredMessage = `
+
+⏰ **Authorization Expired**
+
+The checkout authorization request has expired. Your cart remains unchanged.
+Please say "checkout" again to restart the process.`;
+
+                                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: expiredMessage })}\n\n`));
+                                controller.close(); // Close controller to re-enable chatbox
+                                return; // Exit polling
+                              } else if (statusResult.status === 'slow_down') {
+                                // Auth0 requests slower polling
+                                slowDownDelay = Math.min(slowDownDelay * 1.5, 30); // Cap at 30 seconds
+                                console.log(`CIBA slow down requested, increasing interval to ${slowDownDelay}s`);
+                                continue;
+                              } else if (statusResult.status === 'pending') {
+                                // Still waiting, continue polling
+                                console.log(`Authorization still pending, continuing to poll (attempt ${attempts}/${maxAttempts})`);
+                                continue;
+                              } else {
+                                // Some other error
+                                console.error('=== CIBA POLLING ERROR ===');
+                                console.error('Status Result:', JSON.stringify(statusResult, null, 2));
+                                const errorMessage = `
+
+❌ **Authorization Error**
+
+${statusResult.message || 'An error occurred during authorization.'}
+Please try again.`;
+
+                                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: errorMessage })}\n\n`));
+                                controller.close(); // Close controller to re-enable chatbox
+                                return; // Exit polling
+                              }
+                              
+                            } catch (pollError) {
+                              console.error('=== CIBA POLLING REQUEST FAILED ===');
+                              console.error('Poll Error Details:', {
+                                message: pollError instanceof Error ? pollError.message : 'Unknown error',
+                                stack: pollError instanceof Error ? pollError.stack : undefined,
+                                attempt: attempts,
+                                maxAttempts: maxAttempts,
+                                authReqId: cibaData.auth_req_id
+                              });
+                              if (attempts >= maxAttempts) {
+                                const timeoutMessage = `
+
+⏰ **Checkout Timeout**
+
+The authorization request timed out. Your cart remains unchanged.
+Please try again by saying "checkout".`;
+
+                                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: timeoutMessage })}\n\n`));
+                                controller.close(); // Close controller to re-enable chatbox
+                                return;
+                              }
+                              // Continue polling on error
+                            }
+                          }
+                          
+                          // Max attempts reached
+                          const timeoutMessage = `
+
+⏰ **Checkout Timeout**
+
+The authorization request timed out after ${Math.round((maxAttempts * slowDownDelay) / 60)} minutes.
+Your cart remains unchanged. Please try again by saying "checkout".`;
+
+                          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: timeoutMessage })}\n\n`));
+                        };
+
+                        // Start background polling (don't await)
+                        pollForCibaCompletion().catch(error => {
+                          console.error('CIBA polling error:', error);
+                          const errorMessage = `
+
+❌ **Checkout Error**
+
+An error occurred during the authorization process. Please try again.`;
+                          
+                          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: errorMessage })}\n\n`));
+                        });
+
+                      } catch (error) {
+                        console.error('Auth0 CIBA checkout error:', error);
+                        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: '\n\n❌ Sorry, I had trouble initiating the secure checkout. Please try again.' })}\n\n`));
+                      }
+                    } else if (accumulated.function.name === 'popup_checkout') {
+                      try {
+                        const session = await getSession();
+                        
+                        if (!session?.user?.sub) {
+                          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: '\n\n❌ You need to be signed in to checkout.' })}\n\n`));
+                          continue;
+                        }
+
+                        const userId = session.user.sub;
+
+                        // Get cart with products
+                        const cartData = getCartWithProducts(userId);
+                        console.log('=== POPUP_CHECKOUT INITIATED ===');
+                        console.log('User ID:', userId);
+                        console.log('Cart Data:', JSON.stringify(cartData, null, 2));
+                        
+                        if (!cartData.items || cartData.items.length === 0) {
+                          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: '\n\n❌ Your cart is empty. Please add some items before checkout.' })}\n\n`));
+                          continue;
+                        }
+
+                        // Import popup storage
+                        const { storePopupRequest, getPopupRequest } = await import('../../../lib/popup-storage');
+                        
+                        // Store popup request for tracking
+                        const popupRequestId = storePopupRequest(userId, cartData);
+
+                        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: '\n\n🛒 **Initiating Secure Checkout with Web Authorization...**\n\n🌐 Opening authorization popup window...' })}\n\n`));
+
+                        // For popup checkout, we need to use the Auth0 AI SDK
+                        // This will trigger a popup window for authorization
+                        const checkoutMessage = `
+
+🔐 **Web Authorization Required**
+
+📱 A popup window will open for secure authorization:
+• **Checkout**: ${cartData.items.length} item(s)
+• **Total**: $${cartData.total.toFixed(2)}
+
+🌐 **Next Steps:**
+1. Click "Authorize Checkout" below to open popup
+2. Complete authorization in the popup window
+3. Return here to see confirmation
+
+<div style="text-align: center; margin: 15px 0;">
+  <button onclick="window.openAuth0Popup('${popupRequestId}')" style="background-color: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-size: 14px;">
+    🔐 Authorize Checkout
+  </button>
+</div>
+
+⚠️ **Note:** Make sure popup blockers are disabled for this site.
+
+⏳ **Waiting for authorization...**`;
+
+                        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ 
+                          content: checkoutMessage,
+                          popupCheckout: true,
+                          cartData: {
                             itemCount: cartData.items.length,
                             total: cartData.total,
-                            bindingMessage
+                            items: cartData.items.map(item => ({
+                              name: item.product?.name || 'Unknown Product',
+                              price: item.product?.price || 0,
+                              quantity: item.quantity
+                            }))
+                          }
+                        })}\n\n`));
+
+                        // Start polling for popup completion
+                        hasAsyncOperation = true;
+                        const maxPolls = 60; // 5 minutes total (60 polls * 5 seconds)
+                        let pollCount = 0;
+                        let consecutiveErrors = 0;
+                        const maxAuthErrors = 3;
+
+                        const pollPopupStatus = async () => {
+                          try {
+                            pollCount++;
+                            console.log(`=== POPUP POLLING ATTEMPT ${pollCount}/${maxPolls} ===`);
+                            console.log('Popup Request ID:', popupRequestId);
+
+                            const request = getPopupRequest(popupRequestId);
+                            
+                            if (!request) {
+                              console.log('Popup request not found or expired');
+                              const errorMessage = `\n\n❌ **Authorization Expired**\n\nThe authorization request has expired. Please try again.`;
+                              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: errorMessage })}\n\n`));
+                              controller.enqueue(encoder.encode(`data: [DONE]\n\n`));
+                              controller.close();
+                              return;
+                            }
+
+                            if (request.status === 'completed') {
+                              console.log('Popup checkout completed successfully');
+                              const successMessage = `\n\n✅ **Checkout Successful!**\n\n🎉 Your order has been processed:\n• **Items**: ${request.result.itemCount} item(s)\n• **Total**: $${request.result.total.toFixed(2)}\n\n📧 Confirmation details will be sent to your email.`;
+                              
+                              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: successMessage })}\n\n`));
+                              controller.enqueue(encoder.encode(`data: [DONE]\n\n`));
+                              controller.close();
+                              return;
+                            }
+
+                            if (request.status === 'failed') {
+                              console.log('Popup checkout failed:', request.error);
+                              const errorMessage = `\n\n❌ **Authorization Failed**\n\n${request.error || 'An error occurred during authorization.'}\n\nPlease try again.`;
+                              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: errorMessage })}\n\n`));
+                              controller.enqueue(encoder.encode(`data: [DONE]\n\n`));
+                              controller.close();
+                              return;
+                            }
+
+                            // Still pending
+                            if (pollCount >= maxPolls) {
+                              console.log('=== POPUP POLLING TIMEOUT ===');
+                              const timeoutMessage = `\n\n⏰ **Authorization Timeout**\n\nThe authorization process took too long. Please try again.`;
+                              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: timeoutMessage })}\n\n`));
+                              controller.enqueue(encoder.encode(`data: [DONE]\n\n`));
+                              controller.close();
+                              return;
+                            }
+
+                            // Continue polling
+                            setTimeout(pollPopupStatus, 5000);
+
+                          } catch (error) {
+                            console.error('Popup polling error:', error);
+                            consecutiveErrors++;
+                            
+                            if (consecutiveErrors >= maxAuthErrors) {
+                              console.log('=== STOPPING POPUP POLLING DUE TO PERSISTENT ERRORS ===');
+                              const errorMessage = `\n\n❌ **Checkout Error**\n\nToo many errors occurred during authorization. Please try again.`;
+                              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: errorMessage })}\n\n`));
+                              controller.enqueue(encoder.encode(`data: [DONE]\n\n`));
+                              controller.close();
+                              return;
+                            }
+
+                            console.log(`Authorization error ${consecutiveErrors}/${maxAuthErrors}, continuing to poll...`);
+                            setTimeout(pollPopupStatus, 5000);
                           }
                         };
 
-                        if (authResult.success && authResult.requiresAuthorization) {
-                          const authMessage = `<div style="padding: 10px; border: 1px solid #007bff; border-radius: 6px; background-color: #f8f9fa; font-family: Arial, sans-serif; font-size: 13px;">
-  <div style="color: #007bff; font-weight: bold; margin-bottom: 6px;">🔐 Authorization Required</div>
-  
-  <div style="background-color: white; padding: 6px 8px; border-radius: 4px; margin: 4px 0; font-size: 12px;">
-    <strong>Checkout:</strong> ${authResult.checkout.itemCount} item(s) • Total: $${authResult.checkout.total.toFixed(2)}
-  </div>
-  
-  <div style="text-align: center; margin: 6px 0;">
-    <button onclick="(function(url) {
-        const authWindow = window.open(
-          url, 
-          'authorization', 
-          'width=600,height=700,scrollbars=yes,resizable=yes,status=yes,location=yes,toolbar=no,menubar=no'
-        );
-        if (authWindow) {
-          authWindow.focus();
-        } else {
-          alert('Please allow popups for this site, or use the link below to open the authorization page.');
-          window.open(url, '_blank');
-        }
-      })('${authResult.authorizationUrl}')"
-       style="display: inline-block; 
-              background-color: #28a745; 
-              color: white; 
-              padding: 6px 12px; 
-              text-decoration: none; 
-              border: none;
-              border-radius: 4px; 
-              font-weight: 500; 
-              font-size: 12px;
-              cursor: pointer;
-              transition: background-color 0.2s;"
-       onmouseover="this.style.backgroundColor='#218838'"
-       onmouseout="this.style.backgroundColor='#28a745'">
-      🔓 Authorize Checkout
-    </button>
-  </div>
-  
-  <div style="font-size: 11px; color: #6c757d; text-align: center, margin-top: 4px;">
-    ⏳ Waiting for approval... | <a href="${authResult.authorizationUrl}" target="_blank" style="color: #007bff;">Open in new tab</a>
-  </div>
-</div>`;
+                        // Start polling after a short delay
+                        setTimeout(pollPopupStatus, 5000);
 
-                          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ 
-                            content: authMessage,
-                            authReqId: authResult.authReqId,
-                            authorizationUrl: authResult.authorizationUrl,
-                            requiresAuth: true 
-                          })}\n\n`));
-
-                          // Implement proper CIBA polling instead of setTimeout
-                          const pollForAuthorization = async () => {
-                            const maxAttempts = 300; // 300 attempts = 5 minutes (1 second intervals)
-                            let attempts = 0;
-                            
-                            while (attempts < maxAttempts) {
-                              try {
-                                // Wait 1 second between polls
-                                await new Promise(resolve => setTimeout(resolve, 1000));
-                                attempts++;
-                                
-                                // Poll the authorization status
-                                const tokenResponse = await fetch(`${req.url.split('/api/chat')[0]}/api/ciba-token`, {
-                                  method: 'POST',
-                                  headers: {
-                                    'Content-Type': 'application/json',
-                                    'Cookie': req.headers.get('cookie') || ''
-                                  },
-                                  body: JSON.stringify({
-                                    authReqId: authResult.authReqId
-                                  })
-                                });
-
-                                const tokenResult = await tokenResponse.json();
-                                console.log('CIBA poll result:', tokenResult, 'Response status:', tokenResponse.status);
-                                
-                                // Handle HTTP error responses (404, 403, etc.)
-                                if (!tokenResponse.ok) {
-                                  if (tokenResponse.status === 404) {
-                                    // Request not found - might have been processed already
-                                    console.log('CIBA request not found - might have been processed already');
-                                    try {
-                                      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: '\n\n❌ Authorization session expired. Please try checkout again.' })}\n\n`));
-                                      controller.close();
-                                    } catch (controllerError) {
-                                      console.error('Controller already closed during 404:', controllerError);
-                                    }
-                                    return;
-                                  } else if (tokenResponse.status === 403) {
-                                    // Access denied
-                                    try {
-                                      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: '\n\n❌ Authorization was denied. Checkout cancelled.' })}\n\n`));
-                                      controller.close();
-                                    } catch (controllerError) {
-                                      console.error('Controller already closed during 403:', controllerError);
-                                    }
-                                    return;
-                                  } else if (tokenResponse.status === 408) {
-                                    // Request timeout
-                                    try {
-                                      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: '\n\n⏰ Authorization request timed out. Please try again.' })}\n\n`));
-                                      controller.close();
-                                    } catch (controllerError) {
-                                      console.error('Controller already closed during 408:', controllerError);
-                                    }
-                                    return;
-                                  }
-                                  // For other errors, continue polling for now
-                                  continue;
-                                }
-                                
-                                if (tokenResult.status === 'approved') {
-                                  // Authorization approved - complete checkout
-                                  const checkoutResponse = await fetch(`${req.url.split('/api/chat')[0]}/api/checkout`, {
-                                    method: 'POST',
-                                    headers: {
-                                      'Content-Type': 'application/json',
-                                      'Authorization': `Bearer ${tokenResult.access_token}`,
-                                      'Cookie': req.headers.get('cookie') || ''
-                                    },
-                                    body: JSON.stringify({
-                                      authReqId: authResult.authReqId
-                                    })
-                                  });
-
-                                  const checkoutResult = await checkoutResponse.json();
-
-                                  if (checkoutResult.success) {
-                                    const successMessage = `<div style="padding: 12px; border: 1px solid #28a745; border-radius: 6px; background-color: #f8fff9; font-family: Arial, sans-serif; font-size: 13px;">
-  <div style="color: #28a745; font-weight: bold; margin-bottom: 8px; display: flex; align-items: center;">
-    <span style="font-size: 16px; margin-right: 6px;">✅</span>
-    Checkout Complete!
-  </div>
-  
-  <div style="background-color: white; padding: 8px; border-radius: 4px; margin: 8px 0; font-size: 12px; border-left: 3px solid #28a745;">
-    <div style="font-weight: 600; color: #333; margin-bottom: 4px;">
-      🎉 Order #${checkoutResult.order.orderId}
-    </div>
-    <div style="color: #666;">
-      <strong>Total:</strong> $${checkoutResult.order.total.toFixed(2)} • 
-      <strong>Items:</strong> ${checkoutResult.order.items.length} • 
-      <strong>Date:</strong> ${new Date(checkoutResult.order.timestamp).toLocaleDateString()}
-    </div>
-  </div>
-  
-  <div style="font-size: 11px; color: #28a745; text-align: center; font-weight: 500;">
-    🛒 Thank you for your purchase! Your cart has been cleared.
-  </div>
-</div>`;
-
-                                    try {
-                                      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: successMessage })}\n\n`));
-                                      controller.close(); // Close stream on success
-                                    } catch (controllerError) {
-                                      console.error('Controller already closed during success:', controllerError);
-                                    }
-                                  } else {
-                                    const failureMessage = `<div style="padding: 12px; border: 1px solid #dc3545; border-radius: 6px; background-color: #fff5f5; font-family: Arial, sans-serif; font-size: 13px;">
-  <div style="color: #dc3545; font-weight: bold; margin-bottom: 8px; display: flex; align-items: center;">
-    <span style="font-size: 16px; margin-right: 6px;">❌</span>
-    Checkout Failed
-  </div>
-  
-  <div style="background-color: white; padding: 8px; border-radius: 4px; margin: 8px 0; font-size: 12px; border-left: 3px solid #dc3545;">
-    <div style="color: #666;">
-      ${checkoutResult.message || 'Unknown error occurred during checkout'}
-    </div>
-  </div>
-  
-  <div style="font-size: 11px; color: #dc3545; text-align: center;">
-    Please try again or contact support if the issue persists.
-  </div>
-</div>`;
-                                    try {
-                                      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: failureMessage })}\n\n`));
-                                      controller.close(); // Close stream on failure
-                                    } catch (controllerError) {
-                                      console.error('Controller already closed during failure:', controllerError);
-                                    }
-                                  }
-                                  return; // Exit polling
-                                  
-                                } else if (tokenResult.status === 'denied' || tokenResult.status === 'access_denied') {
-                                  try {
-                                    controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: '\n\n❌ Authorization was denied. Checkout cancelled.' })}\n\n`));
-                                    controller.close(); // Close stream on denial
-                                  } catch (controllerError) {
-                                    console.error('Controller already closed during denial:', controllerError);
-                                  }
-                                  return; // Exit polling
-                                  
-                                } else if (tokenResult.status === 'pending' || tokenResult.status === 'authorization_pending') {
-                                  // Continue polling
-                                  if (attempts % 30 === 0) { // Update every 30 seconds
-                                    try {
-                                      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: `\n\n⏳ Still waiting for authorization... (${Math.floor((maxAttempts - attempts) / 60)} minutes remaining)` })}\n\n`));
-                                    } catch (controllerError) {
-                                      console.error('Controller already closed during pending update:', controllerError);
-                                      return; // Exit polling if controller is closed
-                                    }
-                                  }
-                                  continue;
-                                  
-                                } else {
-                                  // Unknown status or error
-                                  console.error('Unknown CIBA status:', tokenResult);
-                                  try {
-                                    controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: `\n\n❌ Unexpected authorization response. Please try checkout again.` })}\n\n`));
-                                    controller.close(); // Close stream on unknown status
-                                  } catch (controllerError) {
-                                    console.error('Controller already closed during unknown status:', controllerError);
-                                  }
-                                  return; // Exit polling
-                                }
-                                
-                              } catch (pollError) {
-                                console.error('CIBA polling error:', pollError);
-                                try {
-                                  controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: '\n\n❌ Error checking authorization status.' })}\n\n`));
-                                  controller.close(); // Close stream on polling error
-                                } catch (controllerError) {
-                                  console.error('Controller already closed during polling error:', controllerError);
-                                }
-                                return; // Exit polling
-                              }
-                            }
-                            
-                            // Timeout reached
-                            try {
-                              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: '\n\n⏰ Authorization request timed out. Please try again.' })}\n\n`));
-                              controller.close(); // Close stream on timeout
-                            } catch (controllerError) {
-                              console.error('Controller already closed during timeout:', controllerError);
-                            }
-                          };
-                          
-                          // Start polling in background (don't await to keep stream alive)
-                          hasAsyncOperation = true; // Mark that we have an async operation
-                          console.log('Starting async operation - hasAsyncOperation set to:', hasAsyncOperation);
-                          pollForAuthorization().catch(error => {
-                            console.error('Polling error:', error);
-                            try {
-                              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: '\n\n❌ Error during authorization process.' })}\n\n`));
-                              controller.close(); // Close stream on error
-                            } catch (controllerError) {
-                              console.error('Controller already closed:', controllerError);
-                            }
-                          });
-                          
-                          // Don't return - continue processing but skip closing the controller
-
-                        } else {
-                          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: `\n\n❌ ${authResult.message || 'Failed to initiate checkout authorization'}` })}\n\n`));
-                        }
                       } catch (error) {
-                        console.error('Async checkout error:', error);
-                        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: '\n\n❌ Sorry, there was an error initiating the checkout process.' })}\n\n`));
+                        console.error('Popup checkout error:', error);
+                        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: '\n\n❌ Sorry, I had trouble initiating the popup checkout. Please try again.' })}\n\n`));
                       }
                     } else if (accumulated.function.name === 'show_help') {
                       try {

@@ -1,0 +1,36 @@
+{
+  "popup_1756258178522_zt673lmod": {
+    "id": "popup_1756258178522_zt673lmod",
+    "userId": "google-oauth2|104493120577265537739",
+    "cartData": {
+      "items": [
+        {
+          "product": {
+            "id": "1",
+            "name": "Milk",
+            "description": "Fresh whole milk, 1 gallon",
+            "price": 3.99
+          },
+          "quantity": 10,
+          "subtotal": 39.900000000000006
+        }
+      ],
+      "total": 39.900000000000006
+    },
+    "status": "completed",
+    "timestamp": 1756258178522,
+    "expiresAt": 1756258478522,
+    "result": {
+      "success": true,
+      "itemCount": 1,
+      "total": 39.900000000000006,
+      "items": [
+        {
+          "name": "Milk",
+          "quantity": 10,
+          "price": 3.99
+        }
+      ]
+    }
+  }
+}

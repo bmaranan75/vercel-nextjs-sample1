@@ -1,0 +1,24 @@
+[
+  {
+    "userId": "google-oauth2|107565761126565196035",
+    "items": [
+      {
+        "productId": "3",
+        "quantity": 13
+      },
+      {
+        "productId": "20",
+        "quantity": 40
+      }
+    ]
+  },
+  {
+    "userId": "google-oauth2|104493120577265537739",
+    "items": [
+      {
+        "productId": "1",
+        "quantity": 10
+      }
+    ]
+  }
+]
