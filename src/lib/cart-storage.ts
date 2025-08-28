@@ -40,13 +40,25 @@ export class CartStorage {
   async getUserCart(userId: string): Promise<Cart | null> {
     if (this.isProduction) {
       try {
+        console.log('Getting cart from Vercel Blob for user:', userId);
         const { blobs } = await list({ prefix: `cart-${userId}` });
-        if (blobs.length === 0) return null;
+        
+        if (blobs.length === 0) {
+          console.log('No cart found in Vercel Blob for user:', userId);
+          return null;
+        }
         
         const response = await fetch(blobs[0].url);
-        return await response.json();
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const cart = await response.json();
+        console.log('Successfully retrieved cart from Vercel Blob for user:', userId);
+        return cart;
       } catch (error) {
-        console.log('Error getting user cart from blob:', error);
+        console.error('Error getting user cart from Vercel Blob:', error);
+        console.error('User ID:', userId);
         return null;
       }
     } else {
@@ -62,15 +74,20 @@ export class CartStorage {
     if (this.isProduction) {
       try {
         const cartKey = `cart-${cart.userId}.json`;
+        console.log('Saving cart to Vercel Blob:', cartKey);
+        
         await put(cartKey, JSON.stringify(cart), {
           access: 'public',
           addRandomSuffix: false,
+          allowOverwrite: true,
         });
-        console.log('Saved cart to Vercel Blob for user:', cart.userId);
+        
+        console.log('Successfully saved cart to Vercel Blob for user:', cart.userId);
       } catch (error) {
-        console.error('Error saving cart to blob:', error);
-        // Fallback to in-memory for this session
-        throw error;
+        console.error('Error saving cart to Vercel Blob:', error);
+        console.error('Cart data:', JSON.stringify(cart, null, 2));
+        // Re-throw to let caller handle the error
+        throw new Error(`Failed to save cart to Vercel Blob: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     } else {
       const carts = this.getFileCarts();
@@ -113,10 +130,14 @@ export class CartStorage {
    * Clear a specific user's cart items (but keep the cart)
    */
   async clearUserCart(userId: string): Promise<void> {
+    console.log('Clearing cart for user:', userId);
     const cart = await this.getUserCart(userId);
     if (cart) {
       cart.items = [];
       await this.saveUserCart(cart);
+      console.log('Cart cleared successfully for user:', userId);
+    } else {
+      console.log('No cart found to clear for user:', userId);
     }
   }
 
