@@ -4,6 +4,7 @@ import {
   type AuthorizationPendingInterrupt,
   type AuthorizationPollingInterrupt,
 } from "@auth0/ai/interrupts";
+import { getSession } from '@auth0/nextjs-auth0';
 
 // Simple in-memory store for demo purposes
 // In production, you'd use a persistent storage like Redis, database, etc.
@@ -33,46 +34,59 @@ setGlobalAIContext(() => ({
   threadID: `thread-${Date.now()}` 
 }));
 
-// Initialize Auth0 AI instance
+console.log('🔧 Initializing Auth0 AI...');
+console.log('AUTH0_AI_AUDIENCE:', process.env.AUTH0_AI_AUDIENCE);
+console.log('AUTH0_DOMAIN:', process.env.AUTH0_DOMAIN);
+console.log('AUTH0_CLIENT_ID:', process.env.AUTH0_CLIENT_ID ? '***' : 'undefined');
+console.log('AUTH0_CLIENT_SECRET:', process.env.AUTH0_CLIENT_SECRET ? '***' : 'undefined');
+
+// Create Auth0 AI instance with store and Auth0 client configuration
 const auth0AI = new Auth0AI({
   store: () => store,
+  auth0: {
+    domain: process.env.AUTH0_DOMAIN,
+    clientId: process.env.AUTH0_CLIENT_ID,
+    clientSecret: process.env.AUTH0_CLIENT_SECRET,
+  },
 });
 
-// Export the main authorization wrapper for checkout operations
+console.log('✅ Auth0 AI instance created successfully');
+
+// Async user confirmation wrapper for CIBA checkout authorization
 export const withAsyncUserConfirmation = auth0AI.withAsyncUserConfirmation({
   userID: async () => {
-    // In a real app, you'd get this from your auth context
-    // For now, we'll use a placeholder - you should replace this with actual user ID
-    return "user-placeholder";
+    console.log('🔍 Getting user ID for Auth0 AI...');
+    const session = await getSession();
+    console.log('Session user:', session?.user?.sub);
+    if (!session?.user?.sub) {
+      throw new Error("User not authenticated");
+    }
+    console.log('✅ User ID retrieved:', session.user.sub);
+    return session.user.sub;
   },
-  scopes: ["stock:buy"], // Use the same scopes as the cloudflare example
-  audience: process.env.AUTH0_AUDIENCE || "https://api.mystocks.example",
+  scopes: ["checkout:process"],
+  audience: process.env.AUTH0_AI_AUDIENCE || "http://localhost:5000/api/checkout",
   onAuthorizationInterrupt: async (
     interrupt: AuthorizationPendingInterrupt | AuthorizationPollingInterrupt,
     context
   ) => {
-    console.log("Authorization interrupt received:", interrupt);
-    // In the reference implementation, this schedules async confirmation polling
-    // For Next.js, we'll need to handle this differently
-    // This is where the CIBA flow would be initiated
+    console.log('🚨 Auth0 AI authorization interrupt:', interrupt.constructor.name);
+    console.log('Interrupt context:', context);
+    // In a full implementation, you might schedule a background job to poll for completion
+    // For now, the Auth0 AI SDK will handle the polling automatically
   },
   onUnauthorized: async (e: Error) => {
+    console.log('❌ Auth0 AI onUnauthorized:', e);
     if (e instanceof AccessDeniedInterrupt) {
       return "The user has denied the checkout request";
     }
-    return e.message;
+    return `Authorization failed: ${e.message}`;
   },
-  bindingMessage: "Please confirm the checkout operation on your device.",
+  bindingMessage: "Please confirm checkout operation on your registered device.",
 });
 
-// For Google Calendar integration (if needed)
-export const withGoogleCalendar = auth0AI.withTokenForConnection({
-  refreshToken: async () => {
-    // This would come from your Auth0 session
-    return undefined; // Placeholder - should return refresh token string
-  },
-  connection: "google-oauth2",
-  scopes: ["https://www.googleapis.com/auth/calendar.freebusy"],
-});
-
-export default auth0AI;
+// For Google Calendar integration (can be implemented later using auth0AI.withTokenForConnection)
+export const withGoogleCalendar = (config: any) => {
+  // Not implemented yet - return undefined for now
+  return undefined;
+};

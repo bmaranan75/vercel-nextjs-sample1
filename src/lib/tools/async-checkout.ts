@@ -1,94 +1,71 @@
-import { tool } from 'ai';
-import { z } from 'zod';
-import { getCIBACredentials } from '@auth0/ai-vercel';
-import { getCartWithProducts } from '../shopping-store';
+import { tool } from "ai";
+import { z } from "zod";
+import { withAsyncUserConfirmation } from "../auth0-ai";
+import { getSession } from '@auth0/nextjs-auth0';
+import { getCartWithProducts, clearCart } from '../shopping-store';
 
-export const asyncCheckoutTool = tool({
-  description: 'Complete checkout with async user authorization via CIBA push notification',
-  parameters: z.object({}),
-  execute: async (_, options) => {
-    console.log('Starting async checkout process...');
+console.log('📦 Loading async checkout tool...');
 
-    // Access user from the tool configuration
-    const user = (options as any)?.configurable?._credentials?.user;
-
-    if (!user?.sub) {
-      return 'User not authenticated. Please log in first.';
-    }
-
-    // Get cart data
-    const cartData = await getCartWithProducts(user.sub);
-    
-    if (cartData.items.length === 0) {
-      return 'Your cart is empty. Add some items before checking out.';
-    }
-
-    // Calculate total
-    const total = cartData.items.reduce((sum, item) => {
-      if (item.product) {
-        return sum + (item.product.price * item.quantity);
-      }
-      return sum;
-    }, 0);
-
-    const itemCount = cartData.items.reduce((sum, item) => sum + item.quantity, 0);
-
-    console.log(`Requesting authorization for checkout: ${itemCount} items, $${total.toFixed(2)}`);
-
-    // This will trigger the CIBA flow when wrapped with withAsyncCheckoutConfirmation
-    // The Auth0 AI SDK will:
-    // 1. Initiate a CIBA request to Auth0
-    // 2. Send a push notification to the user's device
-    // 3. Wait for user approval/denial
-    // 4. Return the appropriate credentials or error
-
-    // Get CIBA credentials (this will be available after user authorization)
-    const credentials = getCIBACredentials();
-    const accessToken = credentials?.accessToken;
-
-    if (!accessToken) {
-      return 'Authorization failed. Could not obtain access token.';
-    }
-
-    console.log('Authorization successful, proceeding with checkout...');
-
-    // Call the actual checkout API with the authorized token
-    const baseUrl = process.env.VERCEL_URL 
-      ? `https://${process.env.VERCEL_URL}` 
-      : 'http://localhost:3000';
-
-    try {
-      const checkoutResponse = await fetch(`${baseUrl}/api/checkout`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`,
-        },
-      });
-
-      if (!checkoutResponse.ok) {
-        const errorData = await checkoutResponse.json();
-        return `Checkout failed: ${errorData.message || 'Unknown error'}`;
+export const asyncCheckout = withAsyncUserConfirmation(
+  tool({
+    description: "Execute secure checkout with Auth0 CIBA authorization",
+    parameters: z.object({
+      confirmCheckout: z.boolean().describe("Confirmation to proceed with checkout").default(true),
+    }),
+    execute: async ({ confirmCheckout }) => {
+      console.log('🛒 ASYNC CHECKOUT TOOL EXECUTED');
+      console.log('Confirm checkout:', confirmCheckout);
+      
+      if (!confirmCheckout) {
+        console.log('❌ Checkout cancelled by user');
+        return "Checkout cancelled by user";
       }
 
-      const checkoutResult = await checkoutResponse.json();
-
-      if (checkoutResult.success) {
-        return `✅ **Checkout Completed Successfully!**
-
-🎉 **Order Confirmed**
-• Order ID: **${checkoutResult.order.orderId}**
-• Total Amount: **$${checkoutResult.order.total.toFixed(2)}**
-• Items: **${checkoutResult.order.items.length}**
-• Timestamp: ${new Date(checkoutResult.order.timestamp).toLocaleString()}
-
-Your order has been processed and your cart has been cleared. Thank you for your purchase!`;
-      } else {
-        return `❌ Checkout failed: ${checkoutResult.message || 'Unknown error'}`;
+      console.log('🔍 Getting session...');
+      const session = await getSession();
+      console.log('Session user:', session?.user?.sub);
+      
+      if (!session?.user?.sub) {
+        console.log('❌ User not authenticated');
+        throw new Error("User not authenticated");
       }
-    } catch (error) {
-      console.error('Checkout API error:', error);
-      return '❌ Sorry, there was an error processing your checkout. Please try again.';
-    }
-  },
-});
+
+      const userId = session.user.sub;
+      console.log('✅ User authenticated:', userId);
+      
+      // Get cart data
+      console.log('🛒 Getting cart data...');
+      const cartData = await getCartWithProducts(userId);
+      console.log('Cart data:', JSON.stringify(cartData, null, 2));
+      
+      if (!cartData.items || cartData.items.length === 0) {
+        console.log('❌ Cart is empty');
+        return "Cart is empty. Please add some items before checkout.";
+      }
+
+      console.log('💰 Processing checkout for total:', cartData.total);
+
+      // Simulate checkout processing
+      const checkout = {
+        itemCount: cartData.items.length,
+        total: cartData.total,
+        timestamp: new Date().toISOString(),
+        items: cartData.items.map(item => ({
+          name: item.product?.name || 'Unknown Product',
+          price: item.product?.price || 0,
+          quantity: item.quantity
+        }))
+      };
+
+      console.log('✅ Checkout processed successfully:', checkout);
+
+      // For testing, we'll comment out cart clearing
+      // await clearCart(userId);
+      console.log('🧹 Cart preserved for testing');
+
+      return `Checkout completed successfully! Processed ${checkout.itemCount} items for a total of $${checkout.total.toFixed(2)} at ${new Date(checkout.timestamp).toLocaleString()}. Cart preserved for testing.`;
+    },
+  })
+);
+
+console.log('✅ Async checkout tool configured with Auth0 AI wrapper');

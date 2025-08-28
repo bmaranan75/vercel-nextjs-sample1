@@ -24,5 +24,14 @@
         "quantity": 10
       }
     ]
+  },
+  {
+    "userId": "google-oauth2|100875961042416326160",
+    "items": [
+      {
+        "productId": "1",
+        "quantity": 1
+      }
+    ]
   }
 ]
