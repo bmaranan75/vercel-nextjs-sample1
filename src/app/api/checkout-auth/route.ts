@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
     console.log('Checkout auth - User ID:', userId);
     
     // Get cart with products
-    const cartData = getCartWithProducts(userId);
+    const cartData = await getCartWithProducts(userId);
     console.log('Checkout auth - Cart data:', cartData);
     
     if (cartData.items.length === 0) {

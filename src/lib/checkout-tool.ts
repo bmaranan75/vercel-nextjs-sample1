@@ -16,7 +16,7 @@ export const checkoutTool = withAsyncUserConfirmation(
       
       try {
         // Get the current cart
-        const cart = getCart(userId);
+        const cart = await getCart(userId);
         
         if (!cart || cart.items.length === 0) {
           return {

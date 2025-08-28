@@ -408,7 +408,7 @@ ${event.description ? `- **Description:** ${event.description}\n` : ''}${event.l
                         const quantity = args.quantity || 1;
                         const userId = session.user.sub;
                         
-                        const success = addToCart(userId, productId, quantity);
+                        const success = await addToCart(userId, productId, quantity);
                         
                         if (success) {
                           const products = getProducts();
@@ -434,7 +434,7 @@ ${event.description ? `- **Description:** ${event.description}\n` : ''}${event.l
                         }
                         
                         const userId = session.user.sub;
-                        const cartData = getCartWithProducts(userId);
+                        const cartData = await getCartWithProducts(userId);
 
                         if (cartData.items.length === 0) {
                           const emptyCartResponse = `<div style="padding: 10px; border: 1px solid #6c757d; border-radius: 6px; background-color: #f8f9fa; font-family: Arial, sans-serif; font-size: 13px; text-align: center;">
@@ -514,7 +514,7 @@ ${event.description ? `- **Description:** ${event.description}\n` : ''}${event.l
                         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: '\n\n🛒 **Initiating Secure Checkout with Auth0 CIBA...**\n\n📱 Sending push notification to your authenticated device...' })}\n\n`));
 
                         // Get cart with products
-                        const cartData = getCartWithProducts(userId);
+                        const cartData = await getCartWithProducts(userId);
                         console.log('=== ASYNC_CHECKOUT INITIATED ===');
                         console.log('User ID:', userId);
                         console.log('Cart Data:', JSON.stringify(cartData, null, 2));
@@ -853,7 +853,7 @@ An error occurred during the authorization process. Please try again.`;
                         const userId = session.user.sub;
 
                         // Get cart with products
-                        const cartData = getCartWithProducts(userId);
+                        const cartData = await getCartWithProducts(userId);
                         console.log('=== POPUP_CHECKOUT INITIATED ===');
                         console.log('User ID:', userId);
                         console.log('Cart Data:', JSON.stringify(cartData, null, 2));

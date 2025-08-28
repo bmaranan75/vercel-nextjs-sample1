@@ -32,5 +32,193 @@
         }
       ]
     }
+  },
+  "popup_1756353855959_bfzjj1g3p": {
+    "id": "popup_1756353855959_bfzjj1g3p",
+    "userId": "google-oauth2|104493120577265537739",
+    "cartData": {
+      "items": [
+        {
+          "product": {
+            "id": "1",
+            "name": "Milk",
+            "description": "Fresh whole milk, 1 gallon",
+            "price": 3.99
+          },
+          "quantity": 10,
+          "subtotal": 39.900000000000006
+        }
+      ],
+      "total": 39.900000000000006
+    },
+    "status": "pending",
+    "timestamp": 1756353855959,
+    "expiresAt": 1756354155959
+  },
+  "popup_1756354422812_wkdr0sjus": {
+    "id": "popup_1756354422812_wkdr0sjus",
+    "userId": "google-oauth2|104493120577265537739",
+    "cartData": {
+      "items": [
+        {
+          "product": {
+            "id": "1",
+            "name": "Milk",
+            "description": "Fresh whole milk, 1 gallon",
+            "price": 3.99
+          },
+          "quantity": 10,
+          "subtotal": 39.900000000000006
+        }
+      ],
+      "total": 39.900000000000006
+    },
+    "status": "completed",
+    "timestamp": 1756354422812,
+    "expiresAt": 1756354722812,
+    "result": {
+      "success": true,
+      "itemCount": 1,
+      "total": 39.900000000000006,
+      "items": [
+        {
+          "name": "Milk",
+          "quantity": 10,
+          "price": 3.99
+        }
+      ]
+    }
+  },
+  "popup_1756355926945_mjcffs7tt": {
+    "id": "popup_1756355926945_mjcffs7tt",
+    "userId": "google-oauth2|104493120577265537739",
+    "cartData": {
+      "items": [
+        {
+          "product": {
+            "id": "1",
+            "name": "Milk",
+            "description": "Fresh whole milk, 1 gallon",
+            "price": 3.99
+          },
+          "quantity": 10,
+          "subtotal": 39.900000000000006
+        }
+      ],
+      "total": 39.900000000000006
+    },
+    "status": "completed",
+    "timestamp": 1756355926945,
+    "expiresAt": 1756356226945,
+    "result": {
+      "success": true,
+      "itemCount": 1,
+      "total": 39.900000000000006,
+      "items": [
+        {
+          "name": "Milk",
+          "quantity": 10,
+          "price": 3.99
+        }
+      ]
+    }
+  },
+  "popup_1756356947563_kzbllpdyc": {
+    "id": "popup_1756356947563_kzbllpdyc",
+    "userId": "google-oauth2|104493120577265537739",
+    "cartData": {
+      "items": [
+        {
+          "product": {
+            "id": "1",
+            "name": "Milk",
+            "description": "Fresh whole milk, 1 gallon",
+            "price": 3.99
+          },
+          "quantity": 10,
+          "subtotal": 39.900000000000006
+        },
+        {
+          "product": {
+            "id": "20",
+            "name": "Salmon",
+            "description": "Atlantic salmon fillet, per pound",
+            "price": 12.99
+          },
+          "quantity": 10,
+          "subtotal": 129.9
+        }
+      ],
+      "total": 169.8
+    },
+    "status": "completed",
+    "timestamp": 1756356947563,
+    "expiresAt": 1756357247563,
+    "result": {
+      "success": true,
+      "itemCount": 2,
+      "total": 169.8,
+      "items": [
+        {
+          "name": "Milk",
+          "quantity": 10,
+          "price": 3.99
+        },
+        {
+          "name": "Salmon",
+          "quantity": 10,
+          "price": 12.99
+        }
+      ]
+    }
+  },
+  "popup_1756357627321_uwp33mvfi": {
+    "id": "popup_1756357627321_uwp33mvfi",
+    "userId": "google-oauth2|104493120577265537739",
+    "cartData": {
+      "items": [
+        {
+          "product": {
+            "id": "1",
+            "name": "Milk",
+            "description": "Fresh whole milk, 1 gallon",
+            "price": 3.99
+          },
+          "quantity": 10,
+          "subtotal": 39.900000000000006
+        },
+        {
+          "product": {
+            "id": "20",
+            "name": "Salmon",
+            "description": "Atlantic salmon fillet, per pound",
+            "price": 12.99
+          },
+          "quantity": 10,
+          "subtotal": 129.9
+        }
+      ],
+      "total": 169.8
+    },
+    "status": "completed",
+    "timestamp": 1756357627322,
+    "expiresAt": 1756357927322,
+    "result": {
+      "success": true,
+      "itemCount": 2,
+      "total": 169.8,
+      "items": [
+        {
+          "name": "Milk",
+          "quantity": 10,
+          "price": 3.99
+        },
+        {
+          "name": "Salmon",
+          "quantity": 10,
+          "price": 12.99
+        }
+      ]
+    }
   }
 }

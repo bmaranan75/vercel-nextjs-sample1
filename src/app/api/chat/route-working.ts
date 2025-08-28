@@ -217,7 +217,7 @@ Be helpful, friendly, and respond directly to what the user is asking for withou
                         const quantity = args.quantity || 1;
                         const userId = session.user.sub;
                         
-                        const success = addToCart(userId, productId, quantity);
+                        const success = await addToCart(userId, productId, quantity);
                         
                         if (success) {
                           const products = getProducts();
@@ -252,7 +252,7 @@ Be helpful, friendly, and respond directly to what the user is asking for withou
                         }
                         
                         const userId = session.user.sub;
-                        const cartData = getCartWithProducts(userId);
+                        const cartData = await getCartWithProducts(userId);
 
                         if (cartData.items.length === 0) {
                           const emptyCartResponse = `

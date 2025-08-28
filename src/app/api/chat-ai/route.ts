@@ -25,7 +25,7 @@ const simpleCheckout = tool({
     console.log(`🛒 Processing simple checkout for user: ${userId}`);
     
     try {
-      const cart = getCart(userId);
+      const cart = await getCart(userId);
       
       if (!cart || cart.items.length === 0) {
         return {
@@ -102,8 +102,8 @@ const tools = {
         return { success: false, message: 'Product not found' };
       }
 
-      addToCart(userId, productId, quantity);
-      const cart = getCartWithProducts(userId);
+      await addToCart(userId, productId, quantity);
+      const cart = await getCartWithProducts(userId);
       
       return {
         success: true,
@@ -120,7 +120,7 @@ const tools = {
       userId: z.string().describe('The user ID (will be provided by system)'),
     }),
     execute: async ({ userId }) => {
-      const cart = getCartWithProducts(userId);
+      const cart = await getCartWithProducts(userId);
       return {
         success: true,
         cart: cart,
@@ -138,7 +138,7 @@ const tools = {
       userId: z.string().describe('The user ID (will be provided by system)'),
     }),
     execute: async ({ userId }) => {
-      clearCart(userId);
+      await clearCart(userId);
       return {
         success: true,
         message: 'Shopping cart cleared successfully.'

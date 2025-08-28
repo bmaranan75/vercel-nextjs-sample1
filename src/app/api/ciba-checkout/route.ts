@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
     const userId = session.user.sub;
     
     // Get cart with products
-    const cartData = getCartWithProducts(userId);
+    const cartData = await getCartWithProducts(userId);
     
     if (!cartData?.items || cartData.items.length === 0) {
       return NextResponse.json({ 
