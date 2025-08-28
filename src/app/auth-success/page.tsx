@@ -18,42 +18,68 @@ function AuthSuccessContent() {
     console.log('Error:', error);
     console.log('Window opener exists:', !!window.opener);
 
-    if (error) {
+    // Check if this is a Google Calendar authorization based on 'type' parameter
+    const type = searchParams.get('type');
+    
+    // Determine the type of authorization
+    let authType = 'popup_checkout'; // default to popup checkout
+    if (type === 'google') {
+      authType = 'google';
+    } else if (state) {
+      try {
+        const stateData = JSON.parse(state);
+        if (stateData.action === 'popup_checkout') {
+          authType = 'popup_checkout';
+        }
+      } catch (e) {
+        // If state is not JSON parseable, it might be a Google auth userId
+        // Check if it's just a string (Google auth passes userId as state)
+        if (typeof state === 'string' && !state.includes('{')) {
+          authType = 'google';
+        }
+      }
+    }
+
+    console.log('Auth type determined:', authType);
+
+    if (error || (type === 'google' && (error === 'denied' || error === 'failed'))) {
       setStatus('error');
-      console.log('Sending AUTH_ERROR message');
-      // Send error message to parent window
+      console.log('Sending error message for auth type:', authType);
+      // Send error message to parent window based on auth type
       if (window.opener) {
-        window.opener.postMessage({
-          type: 'GOOGLE_AUTH_ERROR',
-          error: error
-        }, window.location.origin);
-        
-        // Also send generic auth error for popup checkout
-        window.opener.postMessage({
-          type: 'AUTH_ERROR',
-          error: error
-        }, window.location.origin);
+        if (authType === 'google') {
+          window.opener.postMessage({
+            type: 'GOOGLE_AUTH_ERROR',
+            error: error || 'Authorization failed'
+          }, window.location.origin);
+        } else if (authType === 'popup_checkout') {
+          window.opener.postMessage({
+            type: 'AUTH_ERROR',
+            error: error || 'Authorization failed'
+          }, window.location.origin);
+        }
         
         setTimeout(() => {
           window.close();
         }, 3000);
       }
-    } else if (code) {
-      // We have an authorization code from Auth0
+    } else if (code || type === 'google') {
+      // We have an authorization code from Auth0 OR this is a successful Google auth
       setStatus('success');
-      console.log('Sending AUTH_SUCCESS message');
-      // Send success message to parent window
+      console.log('Sending success message for auth type:', authType);
+      // Send success message to parent window based on auth type
       if (window.opener) {
-        window.opener.postMessage({
-          type: 'GOOGLE_AUTH_SUCCESS'
-        }, window.location.origin);
-        
-        // Also send generic auth success for popup checkout
-        window.opener.postMessage({
-          type: 'AUTH_SUCCESS',
-          code: code,
-          state: state
-        }, window.location.origin);
+        if (authType === 'google') {
+          window.opener.postMessage({
+            type: 'GOOGLE_AUTH_SUCCESS'
+          }, window.location.origin);
+        } else if (authType === 'popup_checkout') {
+          window.opener.postMessage({
+            type: 'AUTH_SUCCESS',
+            code: code,
+            state: state
+          }, window.location.origin);
+        }
         
         setTimeout(() => {
           window.close();
@@ -64,10 +90,17 @@ function AuthSuccessContent() {
       console.log('No code or error received');
       setStatus('error');
       if (window.opener) {
-        window.opener.postMessage({
-          type: 'AUTH_ERROR',
-          error: 'No authorization code received'
-        }, window.location.origin);
+        if (authType === 'google') {
+          window.opener.postMessage({
+            type: 'GOOGLE_AUTH_ERROR',
+            error: 'No authorization code received'
+          }, window.location.origin);
+        } else if (authType === 'popup_checkout') {
+          window.opener.postMessage({
+            type: 'AUTH_ERROR',
+            error: 'No authorization code received'
+          }, window.location.origin);
+        }
         
         setTimeout(() => {
           window.close();

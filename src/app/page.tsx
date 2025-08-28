@@ -43,13 +43,28 @@ export default function Chat() {
           ? JSON.stringify({ action: 'popup_checkout', userId: user.sub, popupRequestId })
           : JSON.stringify({ action: 'popup_checkout', userId: user.sub });
 
-        const authUrl = `https://dev-ykxaa4dq35hmxhe2.us.auth0.com/authorize?` +
+        const baseUrl = window.location.origin;
+        const auth0Domain = process.env.AUTH0_ISSUER_BASE_URL?.replace('https://', '') || '';
+        const clientId = process.env.AUTH0_CLIENT_ID || '';
+        const audience = process.env.AUTH0_AUDIENCE || '';
+
+        console.log('Popup authorization config:', {
+          baseUrl,
+          auth0Domain,
+          clientId,
+          audience,
+          state
+        });
+
+        const authUrl = `https://${auth0Domain}/authorize?` +
           `response_type=code&` +
-          `client_id=eoACM0hNvrAPPyVMtaHaKlUszRVYXz9X&` +
-          `redirect_uri=${encodeURIComponent('https://my-personal-ai-assistant-git-main-bmaranan75s-projects.vercel.app/auth-success')}&` +
+          `client_id=${clientId}&` +
+          `redirect_uri=${encodeURIComponent(`${baseUrl}/auth-success`)}&` +
           `scope=openid profile email&` +
-          `audience=${encodeURIComponent('https://my-personal-ai-assistant-git-main-bmaranan75s-projects.vercel.app/api/checkout')}&` +
+          `audience=${encodeURIComponent(audience)}&` +
           `state=${encodeURIComponent(state)}`;
+        
+        console.log('Generated auth URL:', authUrl);
 
         const popup = window.open(
           authUrl,
@@ -109,7 +124,16 @@ export default function Chat() {
               clearInterval(checkClosed);
               popup?.close();
               window.removeEventListener('message', messageListener);
-              reject(new Error(event.data.error || 'Authentication failed'));
+              
+              // Provide more detailed error messages
+              let errorMessage = 'Authentication failed';
+              if (event.data.error === 'access_denied') {
+                errorMessage = 'Access denied. Please check that your Auth0 application configuration includes the correct redirect URI and audience settings.';
+              } else if (event.data.error) {
+                errorMessage = `Authentication error: ${event.data.error}`;
+              }
+              
+              reject(new Error(errorMessage));
             }
           };
           

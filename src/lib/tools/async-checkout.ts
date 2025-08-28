@@ -17,7 +17,7 @@ export const asyncCheckoutTool = tool({
     }
 
     // Get cart data
-    const cartData = getCartWithProducts(user.sub);
+    const cartData = await getCartWithProducts(user.sub);
     
     if (cartData.items.length === 0) {
       return 'Your cart is empty. Add some items before checking out.';

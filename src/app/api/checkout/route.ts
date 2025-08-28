@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
       console.log('Popup Request ID:', popupRequestId);
       
       // Use current cart for popup checkout
-      cartData = getCartWithProducts(userId);
+      cartData = await getCartWithProducts(userId);
       console.log('Popup checkout - Cart data retrieved:', cartData);
       
       // Update popup request status if provided
@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
     } else {
       // Regular checkout: use current cart
       console.log('Checkout API - Getting current cart for user:', userId);
-      cartData = getCartWithProducts(userId);
+      cartData = await getCartWithProducts(userId);
       console.log('Checkout API - Current cart data retrieved:', cartData);
     }
     
